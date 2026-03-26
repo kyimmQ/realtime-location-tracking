@@ -1,8 +1,35 @@
+import { useCallback } from 'react';
 import { TrackingMap } from './TrackingMap';
 import { useTrackingStore } from './trackingStore';
+import { useAlertStore } from './alertStore';
+import { useWebSocket } from '../../shared/hooks/useWebSocket';
+import type { WebSocketMessage } from '../../shared/types';
 
 export function TrackingPage() {
-  const { etaSeconds, distanceKm, speed, driverPosition } = useTrackingStore();
+  const { setPosition, update, addPathPoint, etaSeconds, distanceKm, speed, driverPosition } = useTrackingStore();
+  const { alerts } = useAlertStore();
+
+  const handleMessage = useCallback((data: WebSocketMessage) => {
+    if (data.type === 'location_update') {
+      const { latitude, longitude, speed, eta_seconds, distance_km } = data.payload;
+
+      setPosition(latitude, longitude);
+      update({
+        speed,
+        etaSeconds: eta_seconds,
+        distanceKm: distance_km,
+      });
+      addPathPoint(latitude, longitude);
+    } else if (data.type === 'alert') {
+      const alertStore = useAlertStore.getState();
+      alertStore.addAlert(data.payload);
+    }
+  }, [setPosition, update, addPathPoint]);
+
+  useWebSocket({
+    url: 'ws://localhost:8080/ws/tracking',
+    onMessage: handleMessage,
+  });
 
   const formatETA = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -38,6 +65,20 @@ export function TrackingPage() {
 
       {/* Map */}
       <TrackingMap />
+
+      {/* Alerts */}
+      {alerts.length > 0 && (
+        <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
+          <h2 className="text-lg font-bold text-red-700 mb-2">Recent Alerts</h2>
+          <ul className="space-y-2">
+            {alerts.map((alert, idx) => (
+              <li key={alert.alert_id || idx} className="text-sm text-red-600">
+                <strong>{alert.alert_type}:</strong> {alert.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

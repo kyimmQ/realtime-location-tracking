@@ -20,8 +20,8 @@ const destIcon = L.icon({
 });
 
 // Fixed destination for PoC (must match Kafka Streams destination)
-const DEST_LAT = 10.782345;
-const DEST_LON = 106.695123;
+const DEST_LAT = 10.7455190;
+const DEST_LON = 106.6859480;
 const DEST: [number, number] = [DEST_LAT, DEST_LON];
 
 export function TrackingMap() {
@@ -38,7 +38,7 @@ export function TrackingMap() {
   // Initial map center = first known position or destination
   const mapCenter: [number, number] = driverPosition
     ? [driverPosition.lat, driverPosition.lng]
-    : [10.762622, 106.660172]; // Starting point
+    : [10.7467950, 106.6841460]; // Starting point
 
   return (
     <MapContainer center={mapCenter} zoom={14} className="h-[500px] w-full rounded-lg">

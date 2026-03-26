@@ -8,7 +8,26 @@ export interface LocationUpdate {
   distance_km: number;
 }
 
-export interface WebSocketMessage {
+export interface AlertMessage {
+  type: 'alert';
+  alert_id: string;
+  driver_id: string;
+  trip_id: string;
+  timestamp: string;
+  alert_type: string;
+  severity: string;
+  message: string;
+  requires_action: boolean;
+}
+
+export interface WebSocketLocationMessage {
   type: 'location_update';
   payload: LocationUpdate;
 }
+
+export interface WebSocketAlertMessage {
+  type: 'alert';
+  payload: AlertMessage;
+}
+
+export type WebSocketMessage = WebSocketLocationMessage | WebSocketAlertMessage;

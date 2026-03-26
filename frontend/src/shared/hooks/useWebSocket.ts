@@ -11,9 +11,9 @@ interface UseWebSocketOptions {
 export function useWebSocket({ url, onMessage, onOpen, onClose }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const connectRef = useRef<() => void>();
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     wsRef.current = new WebSocket(url);

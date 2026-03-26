@@ -31,3 +31,14 @@ export interface WebSocketAlertMessage {
 }
 
 export type WebSocketMessage = WebSocketLocationMessage | WebSocketAlertMessage;
+
+export interface Order {
+  order_id: string;
+  customer_id: string;
+  driver_id: string;
+  restaurant_location: string;
+  delivery_location: string;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}

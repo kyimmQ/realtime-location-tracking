@@ -194,12 +194,14 @@ Open http://localhost:3000
 - ✅ Partition key optimization
 - ✅ Write throughput >1M ops/sec
 
-## Roadmap
+## Roadmap (Implementation Phases)
 
-- **Week 1:** Infrastructure setup, Golang ingestion, Cassandra schema
-- **Week 2:** Java Kafka Streams topology, ETA/alert logic
-- **Week 3:** Golang API + WebSocket hub, cost calculation
-- **Week 4:** React frontend (customer, driver, admin views)
+- **Phase 1 (Week 1):** ✅ Infrastructure setup, Golang ingestion, Cassandra schema
+- **Phase 2 (Week 2):** ✅ Ingestion Service (Golang GPX simulator)
+- **Phase 3 (Week 2):** ✅ Java Kafka Streams topology, ETA/alert logic
+- **Phase 4 (Week 3):** ✅ Serving Service (Golang API + WebSocket hub)
+- **Phase 5 (Week 3):** ✅ Cost calculation service (automated delivery cost calculation)
+- **Phase 6 (Week 4):** ⏳ React frontend (customer, driver, admin views)
 
 ## Contributors
 

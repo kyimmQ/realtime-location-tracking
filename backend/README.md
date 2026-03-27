@@ -92,6 +92,35 @@ docker exec kafka kafka-console-consumer --topic processed-updates --from-beginn
 docker exec kafka kafka-console-consumer --topic alerts --from-beginning --bootstrap-server localhost:9092
 ```
 
+### Running the Serving API (Phase 4)
+
+The Golang serving API handles REST endpoints, real-time WebSocket communication, and integrates with Cassandra and Kafka.
+
+1. Navigate to the API source directory:
+```bash
+cd backend/src
+```
+
+2. Run the application:
+```bash
+go run cmd/api/main.go
+```
+
+The API will expose endpoints at `http://localhost:8080` and the WebSocket hub at `ws://localhost:8080/ws/tracking`.
+
+### Running the Cost Calculation Service (Phase 5)
+
+The Cost Calculation Service is automatically triggered via the Serving API when an order is marked as `DELIVERED`.
+
+1. **Trigger Calculation:**
+   Send a `PUT` request to `/api/orders/:id/status` with `{"status": "DELIVERED"}`.
+
+2. **What Happens Automatically:**
+   - The backend queries all GPS points for the trip from Cassandra.
+   - It computes total distance using the Haversine formula, along with total duration, average speed, and speeding violations.
+   - It calculates the final cost using the pricing formula: `cost = base_fare + (distance_rate × total_distance) + (time_rate × total_duration)`.
+   - It writes the final summary and trip cost into the `trip_metadata` table, marking the trip as `COMPLETED`.
+
 ### Stopping the Infrastructure
 
 To shut down the infrastructure:

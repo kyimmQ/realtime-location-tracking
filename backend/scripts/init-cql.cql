@@ -86,3 +86,4 @@ CREATE TABLE IF NOT EXISTS alerts (
     metadata MAP<TEXT, TEXT>,      -- {"current_speed": "75", "limit": "60", "distance_m": "480"}
     PRIMARY KEY (driver_id, timestamp, alert_id)
 ) WITH CLUSTERING ORDER BY (timestamp DESC);
+CREATE INDEX IF NOT EXISTS ON trip_metadata (order_id);

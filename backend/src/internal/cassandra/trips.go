@@ -1,9 +1,40 @@
 package cassandra
 
 import (
+	"errors"
 	"log"
+	"math"
 	"time"
 )
+
+// Haversine formula to calculate the distance between two points in kilometers
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371 // Earth radius in kilometers
+
+	dLat := (lat2 - lat1) * math.Pi / 180.0
+	dLon := (lon2 - lon1) * math.Pi / 180.0
+
+	lat1 = lat1 * math.Pi / 180.0
+	lat2 = lat2 * math.Pi / 180.0
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Sin(dLon/2)*math.Sin(dLon/2)*math.Cos(lat1)*math.Cos(lat2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+	return R * c
+}
+
+func CalculateTripDistance(points []TripPoint) float64 {
+	totalKm := 0.0
+	for i := 1; i < len(points); i++ {
+		dist := haversine(
+			points[i-1].Latitude, points[i-1].Longitude,
+			points[i].Latitude, points[i].Longitude,
+		)
+		totalKm += dist
+	}
+	return totalKm
+}
 
 type TripPoint struct {
 	Timestamp time.Time `json:"timestamp"`
@@ -69,4 +100,95 @@ func (c *Client) GetTripMetadata(tripID string) (*TripMetadata, error) {
 		return nil, err
 	}
 	return &meta, nil
+}
+
+func (c *Client) GetTripIDByOrderID(orderID string) (string, error) {
+	session := c.GetSession()
+	query := `SELECT trip_id FROM trip_metadata WHERE order_id = ?`
+
+	var tripID string
+	err := session.Query(query, orderID).Scan(&tripID)
+	if err != nil {
+		log.Printf("Error fetching trip_id by order_id: %v", err)
+		return "", err
+	}
+	return tripID, nil
+}
+
+func (c *Client) CompleteTrip(tripID string) error {
+	session := c.GetSession()
+
+	// 1. Get all points for the trip directly from trip_locations
+	query := `SELECT timestamp, latitude, longitude, speed, heading
+			  FROM trip_locations
+			  WHERE trip_id = ? ORDER BY timestamp ASC`
+	rows := session.Query(query, tripID).Iter()
+
+	var points []TripPoint
+	var p TripPoint
+	for rows.Scan(&p.Timestamp, &p.Latitude, &p.Longitude, &p.Speed, &p.Heading) {
+		points = append(points, p)
+	}
+
+	if err := rows.Close(); err != nil {
+		log.Printf("Error fetching trip route in CompleteTrip: %v", err)
+		return err
+	}
+
+	if len(points) == 0 {
+		return errors.New("no GPS points for trip")
+	}
+
+	// 2. Calculate statistics
+	startTime := points[0].Timestamp
+	endTime := points[len(points)-1].Timestamp
+	durationSec := int(endTime.Sub(startTime).Seconds())
+	totalDistance := CalculateTripDistance(points)
+
+	var maxSpeed, totalSpeed float64
+	speedingViolations := 0
+	for _, p := range points {
+		if p.Speed > maxSpeed {
+			maxSpeed = p.Speed
+		}
+		if p.Speed > 60 {
+			speedingViolations++
+		}
+		totalSpeed += p.Speed
+	}
+
+	avgSpeed := 0.0
+	if len(points) > 0 {
+		avgSpeed = totalSpeed / float64(len(points))
+	}
+
+	// 3. Pricing formula
+	const baseFare = 3.00
+	const distanceRate = 0.50 // per km
+	const timeRate = 0.10     // per minute
+	durationMin := float64(durationSec) / 60.0
+	tripCost := baseFare + (distanceRate * totalDistance) + (timeRate * durationMin)
+	tripCost = math.Round(tripCost*100) / 100 // round to 2dp
+
+	// 4. Update trip_metadata
+	updateQuery := `UPDATE trip_metadata SET
+        end_time = ?,
+        total_distance = ?,
+        total_duration = ?,
+        average_speed = ?,
+        max_speed = ?,
+        speeding_violations = ?,
+        trip_cost = ?,
+        status = 'COMPLETED'
+        WHERE trip_id = ?`
+
+	err := session.Query(updateQuery,
+		endTime, totalDistance, durationSec, avgSpeed,
+		maxSpeed, speedingViolations, tripCost, tripID,
+	).Exec()
+
+	if err != nil {
+		log.Printf("Error updating trip metadata: %v", err)
+	}
+	return err
 }

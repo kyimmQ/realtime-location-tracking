@@ -4,7 +4,7 @@ import type { WebSocketMessage } from '../types';
 interface UseWebSocketOptions {
   url: string;
   onMessage: (data: WebSocketMessage) => void;
-  onOpen?: () => void;
+  onOpen?: (ws: WebSocket) => void;
   onClose?: () => void;
 }
 
@@ -20,7 +20,9 @@ export function useWebSocket({ url, onMessage, onOpen, onClose }: UseWebSocketOp
 
     wsRef.current.onopen = () => {
       retryCountRef.current = 0;
-      onOpen?.();
+      if (wsRef.current) {
+        onOpen?.(wsRef.current);
+      }
 
       // Auto-subscribe to driver after connection
       wsRef.current?.send(JSON.stringify({

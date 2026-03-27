@@ -66,5 +66,12 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
+	if req.Status == "DELIVERED" {
+		tripID, err := h.client.GetTripIDByOrderID(orderID)
+		if err == nil && tripID != "" {
+			_ = h.client.CompleteTrip(tripID)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "updated"})
 }

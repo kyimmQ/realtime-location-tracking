@@ -6,9 +6,10 @@ interface UseWebSocketOptions {
   onMessage: (data: WebSocketMessage) => void;
   onOpen?: (ws: WebSocket) => void;
   onClose?: () => void;
+  driverId?: string;
 }
 
-export function useWebSocket({ url, onMessage, onOpen, onClose }: UseWebSocketOptions) {
+export function useWebSocket({ url, onMessage, onOpen, onClose, driverId }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -25,9 +26,10 @@ export function useWebSocket({ url, onMessage, onOpen, onClose }: UseWebSocketOp
       }
 
       // Auto-subscribe to driver after connection
+      const driverToSubscribe = driverId || 'D001';
       wsRef.current?.send(JSON.stringify({
         action: 'subscribe',
-        driver_id: 'D001',
+        driver_id: driverToSubscribe,
       }));
     };
 
@@ -51,7 +53,7 @@ export function useWebSocket({ url, onMessage, onOpen, onClose }: UseWebSocketOp
     wsRef.current.onerror = () => {
       wsRef.current?.close();
     };
-  }, [url, onMessage, onOpen, onClose]);
+  }, [url, onMessage, onOpen, onClose, driverId]);
 
   useEffect(() => {
     connectRef.current = connect;

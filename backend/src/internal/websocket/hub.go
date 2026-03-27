@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 // Client represents a connected WebSocket client.
 type Client struct {
-	Hub     *Hub
-	Conn    interface{} // Generic for now, to be integrated with gorilla/websocket later
-	Send    chan []byte
+	Hub  *Hub
+	Conn *websocket.Conn
+	Send chan []byte
 }
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.

@@ -56,3 +56,25 @@ func (c *Client) UpdateOrderStatus(orderID, status string) error {
 	}
 	return err
 }
+
+func (c *Client) GetOrdersByDriver(driverID string) ([]Order, error) {
+	session := c.GetSession()
+	// Note: driver_id is not a partition key, so we need ALLOW FILTERING
+	// In production, consider a separate table indexed by driver_id
+	query := `SELECT order_id, customer_id, driver_id, restaurant_location, delivery_location, status, created_at, updated_at
+			  FROM orders WHERE driver_id = ? ALLOW FILTERING`
+
+	rows := session.Query(query, driverID).Iter()
+
+	var orders []Order
+	var o Order
+	for rows.Scan(&o.OrderID, &o.CustomerID, &o.DriverID, &o.RestaurantLocation, &o.DeliveryLocation, &o.Status, &o.CreatedAt, &o.UpdatedAt) {
+		orders = append(orders, o)
+	}
+
+	if err := rows.Close(); err != nil {
+		log.Printf("Error fetching orders by driver: %v", err)
+		return nil, err
+	}
+	return orders, nil
+}

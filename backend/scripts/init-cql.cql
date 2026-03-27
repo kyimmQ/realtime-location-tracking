@@ -10,7 +10,7 @@ USE delivery_tracking;
 CREATE TABLE IF NOT EXISTS orders (
     order_id UUID PRIMARY KEY,
     customer_id UUID,
-    driver_id UUID,
+    driver_id TEXT,               -- TEXT for demo flexibility (e.g., "D001")
     restaurant_location TEXT,      -- "lat,lng"
     delivery_location TEXT,         -- "lat,lng"
     status TEXT,                  -- PENDING, ACCEPTED, PICKING_UP, IN_TRANSIT, ARRIVING, DELIVERED
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE TABLE IF NOT EXISTS trip_locations (
     trip_id UUID,
     timestamp TIMESTAMP,
-    driver_id UUID,
+    driver_id TEXT,                -- TEXT for demo flexibility (e.g., "D001")
     order_id UUID,
     latitude DOUBLE,
     longitude DOUBLE,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS trip_locations (
 -- Query: SELECT * FROM trip_metadata WHERE trip_id = ?
 CREATE TABLE IF NOT EXISTS trip_metadata (
     trip_id UUID PRIMARY KEY,
-    driver_id UUID,
+    driver_id TEXT,                -- TEXT for demo flexibility (e.g., "D001")
     order_id UUID,
     start_time TIMESTAMP,
     end_time TIMESTAMP,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS trip_metadata (
 -- Query: SELECT * FROM driver_analytics WHERE driver_id = ? AND week_start_date >= '2024-01-01'
 -- Aggregation: SUM(total_distance), AVG(average_speed), SUM(speeding_violations) from trip_metadata
 CREATE TABLE IF NOT EXISTS driver_analytics (
-    driver_id UUID,
+    driver_id TEXT,                -- TEXT for demo flexibility (e.g., "D001")
     week_start_date DATE,          -- e.g., 2024-01-29 (Monday)
     total_trips INT,
     total_distance DOUBLE,         -- km
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS driver_analytics (
 -- Supports: Speed > 60 km/h violations, distance < 500m proximity alerts
 CREATE TABLE IF NOT EXISTS alerts (
     alert_id UUID,
-    driver_id UUID,
+    driver_id TEXT,                -- TEXT for demo flexibility (e.g., "D001")
     trip_id UUID,
     timestamp TIMESTAMP,
     alert_type TEXT,               -- SPEEDING, PROXIMITY, GEOFENCE

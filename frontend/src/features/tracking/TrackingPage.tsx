@@ -13,22 +13,26 @@ function formatETA(seconds: number) {
 }
 
 export function TrackingPage() {
-  const { setPosition, update, addPathPoint, etaSeconds, distanceKm, speed, driverPosition } = useTrackingStore()
+  const { setPosition, update, addPathPoint, etaSeconds, distanceKm, speed, driverPosition, driverId, setDriverId } = useTrackingStore()
   const { alerts } = useAlertStore()
 
   const handleMessage = useCallback((data: WebSocketMessage) => {
     if (data.type === 'location_update') {
-      const { latitude, longitude, speed: spd, eta_seconds, distance_km } = data.payload
+      const { latitude, longitude, speed: spd, eta_seconds, distance_km, driver_id } = data.payload
       setPosition(latitude, longitude)
       update({ speed: spd, etaSeconds: eta_seconds, distanceKm: distance_km })
       addPathPoint(latitude, longitude)
+      // Set driver ID from first received message if not set
+      if (driver_id && !driverId) {
+        setDriverId(driver_id)
+      }
     } else if (data.type === 'alert') {
       useAlertStore.getState().addAlert(data.payload)
     }
-  }, [setPosition, update, addPathPoint])
+  }, [setPosition, update, addPathPoint, driverId, setDriverId])
 
   const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/tracking'
-  useWebSocket({ url: WS_URL, onMessage: handleMessage })
+  useWebSocket({ url: WS_URL, onMessage: handleMessage, driverId: driverId || undefined })
 
   const isActive = !!driverPosition
 

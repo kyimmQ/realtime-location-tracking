@@ -49,9 +49,26 @@ func (c *LocationConsumer) Consume(ctx context.Context) {
 			continue
 		}
 
+		// Flatten nested location object and rename distance_to_destination to distance_km
+		// Backend sends: { location: { latitude, longitude }, distance_to_destination, ... }
+		// Frontend expects: { latitude, longitude, distance_km, ... }
+		payload := map[string]interface{}{
+			"driver_id":   driverID,
+			"trip_id":     update["trip_id"],
+			"speed":       update["speed"],
+			"eta_seconds":  update["eta_seconds"],
+			"distance_km": update["distance_to_destination"],
+		}
+
+		// Extract nested location
+		if loc, ok := update["location"].(map[string]interface{}); ok {
+			payload["latitude"] = loc["latitude"]
+			payload["longitude"] = loc["longitude"]
+		}
+
 		wrapped := map[string]interface{}{
-			"type": "location_update",
-			"payload": update,
+			"type":    "location_update",
+			"payload": payload,
 		}
 
 		c.hub.BroadcastLocation(driverID, wrapped)

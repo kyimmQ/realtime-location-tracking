@@ -57,3 +57,23 @@ func (h *DriverHandler) GetDriverAlerts(c *gin.Context) {
 
 	c.JSON(http.StatusOK, alerts)
 }
+
+func (h *DriverHandler) GetDriverOrders(c *gin.Context) {
+	driverID := c.Param("id")
+	if driverID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing driver ID"})
+		return
+	}
+
+	orders, err := h.client.GetOrdersByDriver(driverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch driver orders"})
+		return
+	}
+
+	if orders == nil {
+		orders = []cassandra.Order{}
+	}
+
+	c.JSON(http.StatusOK, orders)
+}

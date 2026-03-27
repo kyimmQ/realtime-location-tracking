@@ -47,6 +47,7 @@ func SetupRouter(hub *ws.Hub, cassandraClient *cassandra.Client) *gin.Engine {
 		// Drivers
 		api.GET("/drivers/:id/analytics", driverHandler.GetDriverAnalytics)
 		api.GET("/drivers/:id/alerts", driverHandler.GetDriverAlerts)
+		api.GET("/drivers/:id/orders", driverHandler.GetDriverOrders)
 
 		// Admin
 		api.GET("/admin/heatmap", adminHandler.GetHeatmap)

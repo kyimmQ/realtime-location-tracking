@@ -31,7 +31,7 @@ export function DriverPage() {
   const { data: orders = [], isLoading } = useQuery<Order[]>({
     queryKey: ['orders', 'driver', 'D001'],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/api/orders?driver_id=D001`)
+      const r = await fetch(`${API_BASE}/api/drivers/D001/orders`)
       if (!r.ok && r.status === 404) {
         return [mockOrder()]
       }

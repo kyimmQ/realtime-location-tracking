@@ -32,6 +32,17 @@ public class Main {
 
         KafkaStreams streams = new KafkaStreams(topology, props);
 
+        // Add state listener to track state changes
+        streams.setStateListener((newState, oldState) -> {
+            System.out.println("State transition from " + oldState + " to " + newState);
+        });
+
+        // Add uncaught exception handler
+        streams.setUncaughtExceptionHandler((t, throwable) -> {
+            System.err.println("Uncaught exception in thread " + t.getName());
+            throwable.printStackTrace();
+        });
+
         final CountDownLatch latch = new CountDownLatch(1);
 
         // Attach shutdown handler to catch control-c
@@ -44,9 +55,13 @@ public class Main {
         });
 
         try {
+            System.out.println("Calling streams.start()...");
             streams.start();
+            System.out.println("streams.start() returned - this should not happen unless closed");
             latch.await();
         } catch (Throwable e) {
+            System.err.println("Exception during streams.start(): " + e.getMessage());
+            e.printStackTrace();
             System.exit(1);
         }
         System.exit(0);
@@ -68,14 +83,15 @@ public class Main {
                 locationEventSerde
         ));
 
-        // Consume raw events
+        // Consume raw events - use driver_id from the message value as key
         KStream<String, LocationEvent> rawStream = builder.stream(
                 "raw-location-events",
                 Consumed.with(Serdes.String(), locationEventSerde)
-        );
+        ).selectKey((k, v) -> v != null ? v.getDriverId() : "unknown");
 
         // Requirement 1: Filter Invalid Coordinates
         Predicate<String, LocationEvent> validCoordinates = (key, event) ->
+                event != null &&
                 event.getLatitude() >= -90 && event.getLatitude() <= 90 &&
                 event.getLongitude() >= -180 && event.getLongitude() <= 180 &&
                 event.getAccuracy() <= 20.0;

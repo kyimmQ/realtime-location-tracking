@@ -33,12 +33,14 @@ export interface WebSocketAlertMessage {
 export type WebSocketMessage = WebSocketLocationMessage | WebSocketAlertMessage;
 
 export interface Order {
-  order_id: string;
-  customer_id: string;
-  driver_id: string;
+  id: string;
+  user_id: string;
+  driver_id: string | null;
+  status: string;
   restaurant_location: string;
   delivery_location: string;
-  status: string;
+  gpx_file?: string;
+  route_points?: [number, number][];
   created_at?: string;
   updated_at?: string;
 }

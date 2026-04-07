@@ -22,11 +22,16 @@ const destIcon = L.icon({
 // Fixed destination for PoC (must match Kafka Streams destination)
 const DEST_LAT = 10.7455190;
 const DEST_LON = 106.6859480;
-const DEST: [number, number] = [DEST_LAT, DEST_LON];
+const DEFAULT_DEST: [number, number] = [DEST_LAT, DEST_LON];
+
+// Destination = last route point (if available) or default
+function getDest(routePoints: [number, number][]): [number, number] {
+  return routePoints.length > 0 ? routePoints[routePoints.length - 1] : DEFAULT_DEST;
+}
 
 export function TrackingMap() {
   const driverMarkerRef = useRef<L.Marker>(null);
-  const { driverPosition, traveledPath } = useTrackingStore();
+  const { driverPosition, traveledPath, routePoints } = useTrackingStore();
 
   // Update marker position imperatively (NOT via React state)
   useEffect(() => {
@@ -35,10 +40,12 @@ export function TrackingMap() {
     }
   }, [driverPosition]);
 
-  // Initial map center = first known position or destination
+  // Initial map center = first known position, first route point, or default
   const mapCenter: [number, number] = driverPosition
     ? [driverPosition.lat, driverPosition.lng]
-    : [10.7467950, 106.6841460]; // Starting point
+    : routePoints.length > 0
+    ? routePoints[0]
+    : [10.7467950, 106.6841460];
 
   return (
     <MapContainer center={mapCenter} zoom={14} className="h-[500px] w-full rounded-lg">
@@ -48,14 +55,39 @@ export function TrackingMap() {
       />
 
       {/* Destination marker */}
-      <Marker position={DEST} icon={destIcon}>
+      <Marker position={getDest(routePoints)} icon={destIcon}>
         <Popup>Destination</Popup>
       </Marker>
+
+      {/* Restaurant (start) marker */}
+      {routePoints.length > 0 && (
+        <Marker
+          position={routePoints[0]}
+          icon={L.icon({
+            iconUrl: '/restaurant.svg',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })}
+        >
+          <Popup>Restaurant</Popup>
+        </Marker>
+      )}
 
       {/* Driver marker - created once, moved via ref */}
       <Marker ref={driverMarkerRef} icon={driverIcon} position={mapCenter}>
         <Popup>Driver</Popup>
       </Marker>
+
+      {/* Full route polyline (planned path from GPX) */}
+      {routePoints.length > 1 && (
+        <Polyline
+          positions={routePoints}
+          color="#94a3b8"
+          weight={3}
+          opacity={0.6}
+          dashArray="8, 8"
+        />
+      )}
 
       {/* Traveled path polyline */}
       {traveledPath.length > 1 && (

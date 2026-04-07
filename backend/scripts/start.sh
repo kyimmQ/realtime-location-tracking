@@ -34,4 +34,18 @@ docker exec kafka kafka-topics \
   --create --topic alerts \
   --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --if-not-exists
 
+docker exec kafka kafka-topics \
+  --create --topic orders \
+  --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --if-not-exists
+
+echo "Building stream processor..."
+cd stream-processor && ./gradlew build --no-daemon -q
+cd ..
+
+echo "Building stream processor Docker image..."
+docker build -t stream-processor:latest ./stream-processor
+
+echo "Starting stream processor..."
+docker compose up -d stream-processor
+
 echo "Infrastructure setup complete!"

@@ -6,7 +6,13 @@ import (
 	"net/http"
 
 	"delivery-tracking/internal/api/handlers"
+	"delivery-tracking/internal/api/middleware"
+	"delivery-tracking/internal/auth"
 	"delivery-tracking/internal/cassandra"
+	"delivery-tracking/internal/gpx"
+	"delivery-tracking/internal/kafka"
+	"delivery-tracking/internal/postgres"
+	"delivery-tracking/internal/simulator"
 	ws "delivery-tracking/internal/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -18,8 +24,25 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func SetupRouter(hub *ws.Hub, cassandraClient *cassandra.Client) *gin.Engine {
+func SetupRouter(hub *ws.Hub, cassandraClient *cassandra.Client, pgClient *postgres.Client, kafkaProducer *kafka.Producer, gpxService *gpx.Service) *gin.Engine {
 	r := gin.Default()
+
+	// CORS middleware - allow frontend origin
+	r.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	})
+
+	// Initialize simulator trigger
+	if kafkaProducer != nil && gpxService != nil {
+		simulator.NewTrigger(kafkaProducer, gpxService)
+	}
 
 	// WebSocket Endpoint
 	r.GET("/ws/tracking", func(c *gin.Context) {
@@ -27,30 +50,44 @@ func SetupRouter(hub *ws.Hub, cassandraClient *cassandra.Client) *gin.Engine {
 	})
 
 	// Handlers
-	orderHandler := handlers.NewOrderHandler(cassandraClient)
+	orderHandler := handlers.NewOrderHandler(cassandraClient, pgClient, gpxService)
 	tripHandler := handlers.NewTripHandler(cassandraClient)
-	driverHandler := handlers.NewDriverHandler(cassandraClient)
+	driverHandler := handlers.NewDriverHandler(cassandraClient, pgClient)
 	adminHandler := handlers.NewAdminHandler(cassandraClient)
+	authHandler := handlers.NewAuthHandler()
 
-	// API Routes
+	// Auth routes (public)
 	api := r.Group("/api")
 	{
+		api.POST("/auth/register", authHandler.Register)
+		api.POST("/auth/login", authHandler.Login)
+		api.POST("/auth/refresh", authHandler.Refresh)
+	}
+
+	// Protected routes
+	protected := r.Group("/api")
+	protected.Use(middleware.AuthRequired())
+	{
+		protected.GET("/auth/me", authHandler.Me)
+
 		// Orders
-		api.POST("/orders", orderHandler.CreateOrder)
-		api.GET("/orders/:id", orderHandler.GetOrder)
-		api.PUT("/orders/:id/status", orderHandler.UpdateOrderStatus)
+		protected.POST("/orders", middleware.AuthRequired("USER"), orderHandler.CreateOrder)
+		protected.GET("/orders", orderHandler.ListOrders)
+		protected.GET("/orders/:id", orderHandler.GetOrder)
+		protected.PUT("/orders/:id/status", orderHandler.UpdateOrderStatus)
+		protected.GET("/orders/:id/route", orderHandler.GetOrderRoute)
 
 		// Trips
-		api.GET("/trips/:id", tripHandler.GetTripMetadata)
-		api.GET("/trips/:id/route", tripHandler.GetTripRoute)
+		protected.GET("/trips/:id", tripHandler.GetTripMetadata)
+		protected.GET("/trips/:id/route", tripHandler.GetTripRoute)
 
 		// Drivers
-		api.GET("/drivers/:id/analytics", driverHandler.GetDriverAnalytics)
-		api.GET("/drivers/:id/alerts", driverHandler.GetDriverAlerts)
-		api.GET("/drivers/:id/orders", driverHandler.GetDriverOrders)
+		protected.GET("/drivers/:id/analytics", middleware.AuthRequired("ADMIN", "DRIVER"), driverHandler.GetDriverAnalytics)
+		protected.GET("/drivers/:id/alerts", middleware.AuthRequired("ADMIN", "DRIVER"), driverHandler.GetDriverAlerts)
+		protected.GET("/drivers/:id/orders", middleware.AuthRequired("ADMIN", "DRIVER"), driverHandler.GetDriverOrders)
 
 		// Admin
-		api.GET("/admin/heatmap", adminHandler.GetHeatmap)
+		protected.GET("/admin/heatmap", middleware.AuthRequired("ADMIN"), adminHandler.GetHeatmap)
 	}
 
 	return r
@@ -93,10 +130,38 @@ func readPump(client *ws.Client, conn *websocket.Conn) {
 		var req map[string]interface{}
 		if err := json.Unmarshal(message, &req); err == nil {
 			action, _ := req["action"].(string)
+
+			// Auth handshake - must be first message
+			if !client.Authenticated {
+				if action == "auth" {
+					token, ok := req["token"].(string)
+					if !ok {
+						conn.WriteJSON(map[string]string{"type": "auth_error", "error": "missing token"})
+						return
+					}
+					claims, err := auth.ValidateToken(token)
+					if err != nil {
+						conn.WriteJSON(map[string]string{"type": "auth_error", "error": "invalid token"})
+						return
+					}
+					client.Authenticated = true
+					client.UserID = claims.UserID
+					client.Role = claims.Role
+					conn.WriteJSON(map[string]string{"type": "auth_success"})
+					continue
+				}
+				conn.WriteJSON(map[string]string{"type": "error", "error": "must authenticate first"})
+				return
+			}
+
+			// Handle subscribe after authenticated
 			switch action {
 			case "subscribe":
 				if driverID, ok := req["driver_id"].(string); ok {
 					client.Hub.SubscribeDriver(client, driverID)
+				}
+				if orderID, ok := req["order_id"].(string); ok {
+					client.Hub.SubscribeOrder(orderID, client)
 				}
 			case "subscribe_alerts":
 				client.Hub.SubscribeAlerts(client)

@@ -34,3 +34,25 @@ services:
       CASSANDRA_CLUSTER_NAME: "DeliveryCluster"
       CASSANDRA_DC: "DC1"
       CASSANDRA_RACK: "Rack1"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: delivery_tracking
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  stream-processor:
+    image: stream-processor:latest
+    container_name: stream-processor
+    depends_on:
+      - kafka
+    command: kafka:29092
+
+volumes:
+  postgres_data:

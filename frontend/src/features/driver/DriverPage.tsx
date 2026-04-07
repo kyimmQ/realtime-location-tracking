@@ -3,6 +3,8 @@ import { useDriverStore } from './driverStore'
 import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import type { Order } from '../../shared/types'
+import { useAuth } from '../../shared/hooks/useAuth'
+import { useEffect } from 'react'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   idle:        { label: 'Online — Waiting',      color: 'bg-surface-100 text-surface-500',    dot: 'bg-surface-400' },
@@ -15,65 +17,111 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
 }
 
 const NEXT_STATUS = {
+  assigned:    { label: 'Accept Order',         next: 'ACCEPTED',   variant: 'primary' as const },
   accepted:    { label: 'Start Picking Up',    next: 'PICKING_UP',  variant: 'primary' as const },
-  picking_up:  { label: 'Start Delivery',        next: 'IN_TRANSIT',  variant: 'primary' as const },
-  in_transit:  { label: 'Mark Arriving',         next: 'ARRIVING',    variant: 'primary' as const },
-  arriving:    { label: 'Mark Delivered',         next: 'DELIVERED',   variant: 'primary' as const },
+  picking_up:  { label: 'Start Delivery',       next: 'IN_TRANSIT',  variant: 'primary' as const },
+  in_transit:  { label: 'Mark Arriving',        next: 'ARRIVING',    variant: 'primary' as const },
+  arriving:    { label: 'Mark Delivered',        next: 'DELIVERED',   variant: 'primary' as const },
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
-export function DriverPage() {
+interface DriverPageProps {
+  embedded?: boolean
+  orderId?: string
+  onStatusUpdate?: () => void
+}
+
+export function DriverPage({ embedded, orderId, onStatusUpdate }: DriverPageProps) {
+  const { accessToken } = useAuth()
   const { currentOrder, status, setOrder, updateStatus, clearOrder } = useDriverStore()
   const queryClient = useQueryClient()
 
-  // Poll for new orders
-  const { data: orders = [], isLoading } = useQuery<Order[]>({
-    queryKey: ['orders', 'driver', 'D001'],
+  const authHeaders: Record<string, string> = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+
+  // Fetch specific order when embedded
+  const { data: embeddedOrder } = useQuery<Order | null>({
+    queryKey: ['order', orderId],
     queryFn: async () => {
-      const r = await fetch(`${API_BASE}/api/drivers/D001/orders`)
-      if (!r.ok && r.status === 404) {
-        return [mockOrder()]
-      }
+      if (!orderId) return null
+      const r = await fetch(`${API_BASE}/api/orders/${orderId}`, { headers: authHeaders })
+      if (!r.ok) return null
+      return r.json()
+    },
+    enabled: !!embedded && !!orderId,
+  })
+
+  // Set embedded order in store
+  useEffect(() => {
+    if (embedded && embeddedOrder && !currentOrder) {
+      setOrder(embeddedOrder)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedded, embeddedOrder])
+
+  // Poll for new orders (only when not embedded)
+  const { data: orders = [], isLoading, refetch } = useQuery<Order[]>({
+    queryKey: ['orders', 'driver', accessToken],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/api/orders`, { headers: authHeaders })
       if (!r.ok) throw new Error('Network error')
       return r.json()
     },
-    refetchInterval: 5000,
+    refetchInterval: embedded ? false : 3000,
+    staleTime: 0,
     retry: 1,
+    enabled: !embedded,
   })
+
+  // Force refetch when component mounts
+  useEffect(() => {
+    refetch()
+  }, [refetch])
 
   // Accept order
   const acceptMutation = useMutation({
-    mutationFn: (orderId: string) =>
-      fetch(`${API_BASE}/api/orders/${orderId}/status`, {
+    mutationFn: (id: string) =>
+      fetch(`${API_BASE}/api/orders/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ status: 'ACCEPTED' }),
-      }).then(r => r.ok ? r.json() : { order_id: orderId, status: 'ACCEPTED' } as Order),
-    onSuccess: (data: Order) => {
-      setOrder(data)
+      }).then(r => r.json()),
+    onSuccess: (_data: any, id: string) => {
+      // API returns {status: "ACCEPTED"} - find the accepted order from the orders list
+      const acceptedOrder = orders.find((o: Order) => o.id === id)
+      if (acceptedOrder) {
+        setOrder(acceptedOrder)
+      }
       updateStatus('accepted')
       queryClient.invalidateQueries({ queryKey: ['orders'] })
+      onStatusUpdate?.()
     },
   })
 
   // Status update
   const statusMutation = useMutation({
-    mutationFn: ({ orderId, newStatus }: { orderId: string; newStatus: string }) =>
-      fetch(`${API_BASE}/api/orders/${orderId}/status`, {
+    mutationFn: ({ id, newStatus }: { id: string; newStatus: string }) =>
+      fetch(`${API_BASE}/api/orders/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ status: newStatus }),
-      }).then(r => r.ok ? r.json() : { order_id: orderId, status: newStatus } as Order),
-    onSuccess: (data: Order) => {
-      updateStatus(data.status.toLowerCase() as typeof status)
-      if (data.status === 'DELIVERED') clearOrder()
+      }).then(r => r.ok ? r.json() : { id, status: newStatus } as any),
+    onSuccess: (data: any) => {
+      const orderStatus = data.status as string
+      updateStatus(orderStatus.toLowerCase() as typeof status)
+      if (orderStatus === 'DELIVERED') {
+        clearOrder()
+      }
+      onStatusUpdate?.()
     },
   })
 
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle
-  const pendingOrders = orders.filter(o => o.status === 'PENDING')
+  // Show PENDING orders (available to all) and ASSIGNED orders (assigned to this driver)
+  const pendingOrders = embedded ? [] : orders.filter((o) => o.status === 'PENDING' || o.status === 'ASSIGNED')
+  console.log('[DEBUG] orders count:', orders.length, 'pendingOrders count:', pendingOrders.length, 'status:', status)
   const canAccept = NEXT_STATUS[status as keyof typeof NEXT_STATUS]
+  const activeOrder = embedded && embeddedOrder ? embeddedOrder : currentOrder
 
   return (
     <div className="page-container max-w-md mx-auto flex flex-col gap-5">
@@ -85,7 +133,7 @@ export function DriverPage() {
       </div>
 
       {/* ── Pending Orders ────────────────────────────────────────────── */}
-      {status === 'idle' && (
+      {status === 'idle' && !embedded && (
         <div className="space-y-3 animate-fade-in">
           <h2 className="section-title">Available Orders</h2>
 
@@ -111,18 +159,16 @@ export function DriverPage() {
               <p className="text-xs text-surface-400 mt-1">New orders will appear automatically</p>
             </div>
           ) : (
-            pendingOrders.map(order => (
-              <div key={order.order_id} className="card border border-surface-100 rounded-xl overflow-hidden">
+            pendingOrders.map((order: Order) => (
+              <div key={order.id} className="card border border-surface-100 rounded-xl overflow-hidden">
                 <div className="px-4 pt-4 pb-3">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="text-xs font-medium text-surface-500 uppercase tracking-wider">Order</p>
-                      <p className="text-base font-bold text-surface-900 mt-0.5">#{order.order_id.slice(0,8).toUpperCase()}</p>
+                      <p className="text-base font-bold text-surface-900 mt-0.5">#{order.id.slice(0,8).toUpperCase()}</p>
                     </div>
                     <Badge variant="warning">New</Badge>
                   </div>
-
-                  {/* Route summary */}
                   <div className="space-y-2">
                     <div className="flex items-start gap-2.5">
                       <div className="mt-1.5 w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0"/>
@@ -141,14 +187,13 @@ export function DriverPage() {
                     </div>
                   </div>
                 </div>
-
                 <div className="px-4 pb-4">
                   <Button
                     variant="primary"
                     size="lg"
                     className="w-full !rounded-xl"
                     loading={acceptMutation.isPending}
-                    onClick={() => acceptMutation.mutate(order.order_id)}
+                    onClick={() => acceptMutation.mutate(order.id)}
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"/>
@@ -163,14 +208,13 @@ export function DriverPage() {
       )}
 
       {/* ── Active Order Card ───────────────────────────────────────────── */}
-      {currentOrder && status !== 'idle' && (
+      {activeOrder && status !== 'idle' && (
         <div className="space-y-3 animate-slide-up">
-          {/* Header */}
           <div className="card border border-driver-100 rounded-xl overflow-hidden">
             <div className="px-4 pt-4 pb-3 bg-driver-50 border-b border-driver-100 flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-driver-600 uppercase tracking-wider">Active Order</p>
-                <p className="text-lg font-bold text-driver-800 mt-0.5">#{currentOrder.order_id.slice(0,8).toUpperCase()}</p>
+                <p className="text-lg font-bold text-driver-800 mt-0.5">#{activeOrder!.id.slice(0,8).toUpperCase()}</p>
               </div>
               <div className="text-right">
                 <Badge variant="info" dot>Active</Badge>
@@ -179,7 +223,6 @@ export function DriverPage() {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Route */}
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <div className="mt-1 flex flex-col items-center">
@@ -190,20 +233,18 @@ export function DriverPage() {
                   <div className="flex-1">
                     <div className="mb-3">
                       <p className="text-2xs font-semibold text-surface-400 uppercase">Pickup</p>
-                      <p className="text-sm font-medium text-surface-700">{currentOrder.restaurant_location}</p>
+                      <p className="text-sm font-medium text-surface-700">{activeOrder!.restaurant_location}</p>
                     </div>
                     <div>
                       <p className="text-2xs font-semibold text-surface-400 uppercase">Dropoff</p>
-                      <p className="text-sm font-medium text-surface-700">{currentOrder.delivery_location}</p>
+                      <p className="text-sm font-medium text-surface-700">{activeOrder!.delivery_location}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Divider */}
               <div className="divider"/>
 
-              {/* Action Button */}
               {canAccept && (
                 <Button
                   variant={canAccept.variant}
@@ -211,7 +252,7 @@ export function DriverPage() {
                   className="w-full !rounded-xl"
                   loading={statusMutation.isPending}
                   onClick={() => statusMutation.mutate({
-                    orderId: currentOrder.order_id,
+                    id: activeOrder!.id,
                     newStatus: canAccept.next,
                   })}
                 >
@@ -244,19 +285,6 @@ export function DriverPage() {
                 </Button>
               )}
 
-              {/* Reject (only in assigned state) */}
-              {status === 'assigned' && (
-                <Button
-                  variant="secondary"
-                  size="md"
-                  className="w-full !rounded-xl"
-                  onClick={() => clearOrder()}
-                >
-                  Reject Order
-                </Button>
-              )}
-
-              {/* Delivered confirmation */}
               {status === 'delivered' && (
                 <div className="text-center py-2">
                   <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-2">
@@ -265,7 +293,6 @@ export function DriverPage() {
                     </svg>
                   </div>
                   <p className="text-sm font-semibold text-emerald-700">Delivery Complete!</p>
-                  <p className="text-xs text-emerald-500 mt-1">Great work. Ready for the next order.</p>
                 </div>
               )}
             </div>
@@ -273,19 +300,7 @@ export function DriverPage() {
         </div>
       )}
 
-      {/* Bottom safe area */}
       <div className="h-8"/>
     </div>
   )
-}
-
-function mockOrder(): Order {
-  return {
-    order_id: 'O789ABCD',
-    customer_id: 'C123',
-    driver_id: 'D001',
-    restaurant_location: '10.762622,106.660172',
-    delivery_location: '10.772622,106.670172',
-    status: 'PENDING',
-  }
 }

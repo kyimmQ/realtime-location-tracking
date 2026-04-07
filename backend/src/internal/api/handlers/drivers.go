@@ -5,15 +5,17 @@ import (
 	"time"
 
 	"delivery-tracking/internal/cassandra"
+	"delivery-tracking/internal/postgres"
 	"github.com/gin-gonic/gin"
 )
 
 type DriverHandler struct {
-	client *cassandra.Client
+	client   *cassandra.Client
+	pgClient *postgres.Client
 }
 
-func NewDriverHandler(client *cassandra.Client) *DriverHandler {
-	return &DriverHandler{client: client}
+func NewDriverHandler(client *cassandra.Client, pgClient *postgres.Client) *DriverHandler {
+	return &DriverHandler{client: client, pgClient: pgClient}
 }
 
 func (h *DriverHandler) GetDriverAnalytics(c *gin.Context) {

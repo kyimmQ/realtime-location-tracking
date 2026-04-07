@@ -10,9 +10,12 @@ import (
 
 // Client represents a connected WebSocket client.
 type Client struct {
-	Hub  *Hub
-	Conn *websocket.Conn
-	Send chan []byte
+	Hub           *Hub
+	Conn         *websocket.Conn
+	Send         chan []byte
+	Authenticated bool
+	UserID       string
+	Role         string
 }
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
@@ -32,6 +35,7 @@ type Hub struct {
 	// Subscriptions
 	DriverSubscriptions map[string]map[*Client]bool
 	AlertSubscriptions  map[*Client]bool
+	OrderSubscriptions  map[string]map[*Client]bool
 	mu                  sync.RWMutex
 }
 
@@ -43,6 +47,7 @@ func NewHub() *Hub {
 		Clients:             make(map[*Client]bool),
 		DriverSubscriptions: make(map[string]map[*Client]bool),
 		AlertSubscriptions:  make(map[*Client]bool),
+		OrderSubscriptions:  make(map[string]map[*Client]bool),
 	}
 }
 
@@ -59,14 +64,22 @@ func (h *Hub) Run() {
 				delete(h.Clients, client)
 				close(client.Send)
 
-				// Clean up subscriptions
+				// Clean up driver subscriptions
 				for driverID, clients := range h.DriverSubscriptions {
 					delete(clients, client)
 					if len(clients) == 0 {
 						delete(h.DriverSubscriptions, driverID)
 					}
 				}
+				// Clean up alert subscriptions
 				delete(h.AlertSubscriptions, client)
+				// Clean up order subscriptions
+				for orderID, clients := range h.OrderSubscriptions {
+					delete(clients, client)
+					if len(clients) == 0 {
+						delete(h.OrderSubscriptions, orderID)
+					}
+				}
 			}
 			h.mu.Unlock()
 		case message := <-h.Broadcast:
@@ -109,15 +122,39 @@ func (h *Hub) BroadcastLocation(driverID string, message map[string]interface{})
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	// Send to driver subscribers
 	if clients, ok := h.DriverSubscriptions[driverID]; ok {
 		for client := range clients {
 			select {
 			case client.Send <- payload:
 			default:
-				// Assuming channel closed or full, clean up handled by unregister
 			}
 		}
 	}
+
+	// Send to order subscribers (order-based subscription)
+	// Extract order_id from message payload
+	if payloadMap, ok := message["payload"].(map[string]interface{}); ok {
+		if orderID, ok := payloadMap["order_id"].(string); ok {
+			if clients, ok := h.OrderSubscriptions[orderID]; ok {
+				for client := range clients {
+					select {
+					case client.Send <- payload:
+					default:
+					}
+				}
+			}
+		}
+	}
+}
+
+func (h *Hub) SubscribeOrder(orderID string, client *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.OrderSubscriptions[orderID]; !ok {
+		h.OrderSubscriptions[orderID] = make(map[*Client]bool)
+	}
+	h.OrderSubscriptions[orderID][client] = true
 }
 
 func (h *Hub) BroadcastAlert(message map[string]interface{}) {

@@ -7,10 +7,12 @@ interface TrackingState {
   distanceKm: number;
   speed: number;
   traveledPath: [number, number][];
+  routePoints: [number, number][];
   setPosition: (lat: number, lng: number) => void;
   setDriverId: (driverId: string) => void;
   update: (update: Partial<{ etaSeconds: number; distanceKm: number; speed: number }>) => void;
   addPathPoint: (lat: number, lng: number) => void;
+  setRoutePoints: (points: [number, number][]) => void;
 }
 
 export const useTrackingStore = create<TrackingState>((set) => ({
@@ -20,6 +22,7 @@ export const useTrackingStore = create<TrackingState>((set) => ({
   distanceKm: 0,
   speed: 0,
   traveledPath: [],
+  routePoints: [],
 
   setPosition: (lat, lng) => set({ driverPosition: { lat, lng } }),
 
@@ -29,4 +32,6 @@ export const useTrackingStore = create<TrackingState>((set) => ({
 
   addPathPoint: (lat, lng) =>
     set((s) => ({ traveledPath: [...s.traveledPath, [lat, lng]] })),
+
+  setRoutePoints: (points) => set({ routePoints: points }),
 }));

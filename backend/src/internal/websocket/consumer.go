@@ -49,21 +49,25 @@ func (c *LocationConsumer) Consume(ctx context.Context) {
 			continue
 		}
 
-		// Flatten nested location object and rename distance_to_destination to distance_km
-		// Backend sends: { location: { latitude, longitude }, distance_to_destination, ... }
-		// Frontend expects: { latitude, longitude, distance_km, ... }
-		payload := map[string]interface{}{
-			"driver_id":   driverID,
-			"trip_id":     update["trip_id"],
-			"speed":       update["speed"],
-			"eta_seconds":  update["eta_seconds"],
-			"distance_km": update["distance_to_destination"],
+		orderID, _ := update["order_id"].(string)
+
+		// Extract latitude and longitude from nested location object
+		var lat, lng float64
+		if loc, ok := update["location"].(map[string]interface{}); ok {
+			lat, _ = loc["latitude"].(float64)
+			lng, _ = loc["longitude"].(float64)
 		}
 
-		// Extract nested location
-		if loc, ok := update["location"].(map[string]interface{}); ok {
-			payload["latitude"] = loc["latitude"]
-			payload["longitude"] = loc["longitude"]
+		// Get enriched data from processed-updates
+		payload := map[string]interface{}{
+			"driver_id":    driverID,
+			"order_id":     orderID,
+			"trip_id":      update["trip_id"],
+			"latitude":      lat,
+			"longitude":     lng,
+			"speed":         update["speed"],
+			"eta_seconds":   update["eta_seconds"],
+			"distance_km":   update["distance_to_destination"],
 		}
 
 		wrapped := map[string]interface{}{
@@ -71,6 +75,7 @@ func (c *LocationConsumer) Consume(ctx context.Context) {
 			"payload": payload,
 		}
 
+		log.Printf("Broadcasting location: driver=%s lat=%.6f lng=%.6f", driverID, lat, lng)
 		c.hub.BroadcastLocation(driverID, wrapped)
 	}
 }

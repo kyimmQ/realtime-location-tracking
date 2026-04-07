@@ -11,6 +11,9 @@ import (
 
 	"delivery-tracking/internal/api"
 	"delivery-tracking/internal/cassandra"
+	"delivery-tracking/internal/gpx"
+	"delivery-tracking/internal/kafka"
+	"delivery-tracking/internal/postgres"
 	"delivery-tracking/internal/websocket"
 )
 
@@ -26,12 +29,31 @@ func main() {
 	cassandraHosts := getEnv("CASSANDRA_HOSTS", "localhost:9042")
 	port := getEnv("PORT", "8080")
 
-	// Cassandra
+	// PostgreSQL (auth, users, orders)
+	pgCtx := context.Background()
+	pgClient, err := postgres.Connect(pgCtx)
+	if err != nil {
+		log.Fatalf("PostgreSQL connection failed: %v", err)
+	}
+	defer pgClient.Close()
+	log.Println("PostgreSQL connected")
+
+	// Cassandra (time-series data)
 	cassandraClient, err := cassandra.NewClient(cassandraHosts)
 	if err != nil {
 		log.Fatalf("Cassandra connection failed: %v", err)
 	}
 	defer cassandraClient.Close()
+
+	// GPX service
+	gpxService := gpx.NewService(getEnv("GPX_DIR", "gpxs"))
+
+	// Kafka producer (for simulator)
+	kafkaProducer, err := kafka.NewProducer(kafkaBrokers)
+	if err != nil {
+		log.Fatalf("Kafka producer failed: %v", err)
+	}
+	defer kafkaProducer.Close()
 
 	// WebSocket hub
 	hub := websocket.NewHub()
@@ -51,8 +73,8 @@ func main() {
 	go locationConsumer.Consume(consumerCtx)
 	go alertConsumer.Consume(consumerCtx)
 
-	// REST API
-	router := api.SetupRouter(hub, cassandraClient)
+	// REST API (passes gpxService and kafkaProducer for simulator)
+	router := api.SetupRouter(hub, cassandraClient, pgClient, kafkaProducer, gpxService)
 	srv := &http.Server{Addr: ":" + port, Handler: router}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

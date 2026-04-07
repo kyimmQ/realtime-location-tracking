@@ -1,10 +1,15 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { TrackingMap } from './TrackingMap'
 import { useTrackingStore } from './trackingStore'
 import { useAlertStore } from './alertStore'
 import { useWebSocket } from '../../shared/hooks/useWebSocket'
+import { useAuth } from '../../shared/hooks/useAuth'
 import { Badge } from '../../components/ui/Badge'
 import type { WebSocketMessage } from '../../shared/types'
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const WS_URL   = import.meta.env.VITE_WS_URL  || 'ws://localhost:8080/ws/tracking'
 
 function formatETA(seconds: number) {
   const mins = Math.floor(seconds / 60)
@@ -13,26 +18,71 @@ function formatETA(seconds: number) {
 }
 
 export function TrackingPage() {
+  const { orderId } = useParams<{ orderId: string }>()
+  const id = orderId ?? ''
+
+  const { accessToken, isLoading: authLoading } = useAuth()
+  const { setRoutePoints } = useTrackingStore()
+  const [, setOrderStatus] = useState<string | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+
   const { setPosition, update, addPathPoint, etaSeconds, distanceKm, speed, driverPosition, driverId, setDriverId } = useTrackingStore()
   const { alerts } = useAlertStore()
 
+  // ── Fetch order details (route_points) on mount ────────────────────────
+  useEffect(() => {
+    if (!id || !accessToken || authLoading) return
+
+    const fetchOrder = async () => {
+      setFetchError(null)
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+
+      try {
+        const res = await fetch(`${API_BASE}/api/orders/${id}`, { headers })
+        if (res.ok) {
+          const data = await res.json()
+          setOrderStatus(data.status ?? null)
+          if (data.route_points) {
+            setRoutePoints(data.route_points as [number, number][])
+          }
+        } else if (res.status === 401) {
+          setFetchError('Authentication required. Please refresh the page.')
+        } else {
+          setFetchError('Failed to load order details.')
+        }
+      } catch {
+        // non-fatal – WS will still work
+      }
+    }
+
+    fetchOrder()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, accessToken, authLoading])
+
+  // ── WebSocket auth + subscribe ─────────────────────────────────────────
   const handleMessage = useCallback((data: WebSocketMessage) => {
+    // Detect delivered status from location_update payload
     if (data.type === 'location_update') {
       const { latitude, longitude, speed: spd, eta_seconds, distance_km, driver_id } = data.payload
       setPosition(latitude, longitude)
       update({ speed: spd, etaSeconds: eta_seconds, distanceKm: distance_km })
       addPathPoint(latitude, longitude)
-      // Set driver ID from first received message if not set
-      if (driver_id && !driverId) {
-        setDriverId(driver_id)
-      }
+      if (driver_id && !driverId) setDriverId(driver_id)
+      // If no more distance, treat as delivered
+      if (distance_km === 0) setOrderStatus('DELIVERED')
     } else if (data.type === 'alert') {
       useAlertStore.getState().addAlert(data.payload)
     }
   }, [setPosition, update, addPathPoint, driverId, setDriverId])
 
-  const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/tracking'
-  useWebSocket({ url: WS_URL, onMessage: handleMessage, driverId: driverId || undefined })
+  useWebSocket({
+    url: WS_URL,
+    onMessage: handleMessage,
+    authToken: accessToken ?? undefined,
+    orderId: id || undefined,
+    enabled: !!accessToken && !authLoading,
+  })
 
   const isActive = !!driverPosition
 
@@ -163,17 +213,43 @@ export function TrackingPage() {
       {/* ── Empty state ──────────────────────────────────────────────────── */}
       {!isActive && alerts.length === 0 && (
         <div className="text-center py-16 animate-fade-in">
-          <div className="w-16 h-16 rounded-2xl bg-surface-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-surface-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/>
-              <rect x="9" y="11" width="14" height="10" rx="2"/>
-              <circle cx="12" cy="16" r="1"/>
-            </svg>
-          </div>
-          <h3 className="text-base font-semibold text-surface-700 mb-1">Delivery Starting Soon</h3>
-          <p className="text-sm text-surface-500 max-w-xs mx-auto">
-            Your order details will appear here once the driver begins the delivery.
-          </p>
+          {authLoading ? (
+            <>
+              <div className="w-16 h-16 rounded-2xl bg-surface-100 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <svg className="w-8 h-8 text-surface-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-surface-700 mb-1">Loading...</h3>
+              <p className="text-sm text-surface-500">Please wait while we connect.</p>
+            </>
+          ) : fetchError ? (
+            <>
+              <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 8v4m0 4h.01"/>
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-surface-700 mb-1">Unable to Load Order</h3>
+              <p className="text-sm text-surface-500 max-w-xs mx-auto">{fetchError}</p>
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 rounded-2xl bg-surface-100 flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-surface-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/>
+                  <rect x="9" y="11" width="14" height="10" rx="2"/>
+                  <circle cx="12" cy="16" r="1"/>
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-surface-700 mb-1">Delivery Starting Soon</h3>
+              <p className="text-sm text-surface-500 max-w-xs mx-auto">
+                Your order details will appear here once the driver begins the delivery.
+              </p>
+            </>
+          )}
         </div>
       )}
 

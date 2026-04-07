@@ -2,7 +2,6 @@ package com.delivery.model;
 
 import java.util.Date;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonFormat;
 
 public class LocationEvent {
     @JsonProperty("driver_id")
@@ -15,7 +14,6 @@ public class LocationEvent {
     private String orderId;
 
     @JsonProperty("timestamp")
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSX")
     private Date timestamp;
 
     @JsonProperty("latitude")

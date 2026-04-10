@@ -1,35 +1,49 @@
 package kafka
 
 import (
-    "context"
-    "encoding/json"
-    "time"
+	"context"
+	"encoding/json"
+	"time"
 
-    "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go"
 )
 
 type Producer struct {
-    writer *kafka.Writer
+	writer *kafka.Writer
 }
 
 func NewProducer(brokers string) (*Producer, error) {
-    writer := &kafka.Writer{
-        Addr:         kafka.TCP(brokers),
-        Topic:        "raw-location-events",
-        Balancer:     &kafka.LeastBytes{},
-        BatchTimeout: 10 * time.Millisecond,
-    }
-    return &Producer{writer: writer}, nil
+	writer := &kafka.Writer{
+		Addr:         kafka.TCP(brokers),
+		Topic:        "raw-location-events",
+		Balancer:     &kafka.LeastBytes{},
+		BatchTimeout: 10 * time.Millisecond,
+	}
+	return &Producer{writer: writer}, nil
 }
 
 func (p *Producer) Publish(ctx context.Context, event interface{}) error {
-    data, err := json.Marshal(event)
-    if err != nil {
-        return err
-    }
-    return p.writer.WriteMessages(ctx, kafka.Message{Value: data})
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	return p.writer.WriteMessages(ctx, kafka.Message{Value: data})
+}
+
+// PublishToTopic publishes a message to a specific Kafka topic
+func (p *Producer) PublishToTopic(ctx context.Context, topic string, key string, event interface{}) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	writer := &kafka.Writer{
+		Addr:     p.writer.Addr,
+		Topic:    topic,
+		Balancer: &kafka.LeastBytes{},
+	}
+	return writer.WriteMessages(ctx, kafka.Message{Key: []byte(key), Value: data})
 }
 
 func (p *Producer) Close() error {
-    return p.writer.Close()
+	return p.writer.Close()
 }

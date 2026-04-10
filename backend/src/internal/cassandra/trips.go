@@ -115,6 +115,7 @@ func (c *Client) GetTripIDByOrderID(orderID string) (string, error) {
 	return tripID, nil
 }
 
+// CompleteTrip finalizes a trip by calculating statistics and updating analytics
 func (c *Client) CompleteTrip(tripID string) error {
 	session := c.GetSession()
 
@@ -189,6 +190,48 @@ func (c *Client) CompleteTrip(tripID string) error {
 
 	if err != nil {
 		log.Printf("Error updating trip metadata: %v", err)
+		return err
 	}
+
+	// 5. Update driver analytics (weekly aggregation)
+	if err := c.UpdateDriverAnalyticsFromTrip(tripID, totalDistance, avgSpeed, speedingViolations); err != nil {
+		log.Printf("Warning: Error updating driver analytics: %v", err)
+		// Don't fail the whole operation for analytics update failure
+	}
+
+	return nil
+}
+
+// UpdateDriverAnalyticsFromTrip aggregates trip stats into driver_analytics table
+func (c *Client) UpdateDriverAnalyticsFromTrip(tripID string, totalDistance, avgSpeed float64, speedingViolations int) error {
+	session := c.GetSession()
+
+	// Get driver_id from trip_metadata
+	var driverID string
+	err := session.Query(`SELECT driver_id FROM trip_metadata WHERE trip_id = ?`, tripID).Scan(&driverID)
+	if err != nil {
+		return err
+	}
+
+	// Calculate week start (Monday)
+	now := time.Now()
+	weekStart := now.AddDate(0, 0, -int(now.Weekday())).Truncate(24 * time.Hour)
+	weekStartStr := weekStart.Format("2006-01-02")
+
+	// Try to update existing week, or insert new
+	updateQuery := `INSERT INTO driver_analytics (driver_id, week_start_date, total_trips, total_distance, total_duration, average_speed, speeding_violations, idle_time)
+	VALUES (?, ?, 1, ?, 0, ?, ?, 0)
+	ON CONFLICT (driver_id, week_start_date)
+	DO UPDATE SET
+		total_trips = driver_analytics.total_trips + 1,
+		total_distance = driver_analytics.total_distance + ?,
+		average_speed = (driver_analytics.average_speed * driver_analytics.total_trips + ?) / (driver_analytics.total_trips + 1),
+		speeding_violations = driver_analytics.speeding_violations + ?`
+
+	err = session.Query(updateQuery, driverID, weekStartStr,
+		totalDistance, avgSpeed, speedingViolations,
+		totalDistance, avgSpeed, speedingViolations,
+	).Exec()
+
 	return err
 }

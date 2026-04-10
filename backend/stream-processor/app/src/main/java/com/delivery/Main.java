@@ -132,6 +132,10 @@ public class Main {
         // In real implementations, ETA calculation is complex.
         KStream<String, EnrichedLocation> enrichedWithSpeed = speedStream;
 
+        // Rekey stream to use order_id for joining with destination table
+        KStream<String, EnrichedLocation> rekeyedStream = enrichedWithSpeed
+                .selectKey((k, v) -> v.getOrderId() != null ? v.getOrderId() : k);
+
         // Requirement 4: Stream-Table Join with Destination (KTable)
         KTable<String, Destination> destinationTable = builder.table(
                 "orders",
@@ -139,8 +143,8 @@ public class Main {
                 Materialized.as("destination-store")
         );
 
-        // To handle PoC lack of actual orders KTable population, we can handle it optionally:
-        KStream<String, EnrichedLocation> fullyEnrichedStream = enrichedWithSpeed.leftJoin(
+        // Join with destination table to get distance and ETA
+        KStream<String, EnrichedLocation> fullyEnrichedStream = rekeyedStream.leftJoin(
                 destinationTable,
                 (location, dest) -> {
                     if (dest != null) {
@@ -156,10 +160,7 @@ public class Main {
                         }
                         return location.withDistanceAndEta(distKm, etaSec);
                     }
-                    // For dummy test where destination might not be joined correctly, or simply not exist,
-                    // return the location unaltered. Wait, the distance might be 0.0 by default.
-                    // If distance is 0, proximity alert might trigger if we just check `< 0.5`.
-                    // So we only alert proximity if distance > 0.
+                    // If destination not available, return location as-is
                     return location;
                 },
                 Joined.with(Serdes.String(), enrichedLocationSerde, destinationSerde)

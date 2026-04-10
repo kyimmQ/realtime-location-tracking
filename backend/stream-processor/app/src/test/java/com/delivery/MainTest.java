@@ -100,8 +100,8 @@ class MainTest {
 
     @Test
     void testProximityAlert() {
-        // Mock a destination exactly at 10.763, 106.661
-        destinationTopic.pipeInput("D002", new Destination(10.763, 106.661));
+        // Mock a destination - orderId "O002" matches the LocationEvent's orderId
+        destinationTopic.pipeInput("O002", new Destination("O002", "D002", 10.763, 106.661));
 
         Instant t1 = Instant.parse("2024-01-30T10:15:30Z");
 

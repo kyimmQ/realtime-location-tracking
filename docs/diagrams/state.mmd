@@ -1,0 +1,20 @@
+stateDiagram-v2
+    [*] --> PENDING : Customer places order
+    
+    PENDING --> ACCEPTED : Driver assigned & accepts
+    PENDING --> CANCELLED : Customer/System cancels
+    
+    ACCEPTED --> IN_TRANSIT : Driver starts moving (GPS ingested)
+    ACCEPTED --> CANCELLED : Driver/Admin cancels
+    
+    state IN_TRANSIT {
+        [*] --> Tracking
+        Tracking --> SpeedingAlert : Speed > 60km/h
+        SpeedingAlert --> Tracking
+        Tracking --> ProximityAlert : Distance < 500m
+        ProximityAlert --> Tracking
+    }
+    
+    IN_TRANSIT --> DELIVERED : Driver marks as completed
+    DELIVERED --> [*]
+    CANCELLED --> [*]

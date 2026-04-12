@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    actor Customer
+    participant API as API Server (Go)
+    participant DB as Cassandra
+    participant Kafka as Event Bus
+    participant WS as WebSocket Hub
+    actor Driver
+
+    Customer->>API: POST /api/orders (Place Order)
+    API->>DB: INSERT INTO orders (Status: PENDING)
+    API-->>Customer: Return order_id & assigned driver_id
+    
+    API->>Driver: Notify Assignment
+    Driver->>API: PUT /api/orders/{id}/status (Status: ACCEPTED)
+    API->>DB: UPDATE orders SET status='ACCEPTED'
+    
+    rect rgb(240, 248, 255)
+        Note right of Customer: --- LIVE TRACKING LOOP ---
+        loop Every 1 Second
+            Driver->>Kafka: Publish GPS Data (raw-location-events)
+            Kafka->>Kafka: Stream Processing (Filter, Speed, ETA)
+            Kafka->>WS: Consume processed-updates
+            WS->>Customer: Push Live Location & ETA via WebSocket
+            Kafka->>DB: Async Write to trip_locations
+        end
+    end
+
+    Driver->>API: PUT /api/orders/{id}/status (Status: DELIVERED)
+    API->>DB: UPDATE orders SET status='DELIVERED'
+    
+    API->>DB: Query trip_locations (Calculate distance & duration)
+    API->>DB: INSERT INTO trip_metadata (Calculate Cost)
+    
+    API-->>Driver: Return Trip Summary (Distance, Duration, Cost)
+    API-->>Customer: Push 'Order Completed' Notification

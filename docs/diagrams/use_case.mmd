@@ -1,0 +1,40 @@
+flowchart LR
+    %% Actors
+    Customer([👤 Customer])
+    Driver([🚗 Driver])
+    Admin([🛡️ Admin])
+    Simulator([⚙️ GPX Simulator])
+
+    %% System Boundary
+    subgraph System [Real-Time Tracking System]
+        direction TB
+        UC1(Place Delivery Order)
+        UC2(View Live Order Status & ETA)
+        UC3(Accept/Update Order Status)
+        UC4(Transmit GPS Location)
+        UC5(Complete Trip & View Cost)
+        UC6(Monitor Active Deliveries)
+        UC7(View Driver Analytics & History)
+        UC8(Receive Safety Alerts)
+    end
+
+    %% Customer Links
+    Customer --> UC1
+    Customer --> UC2
+
+    %% Driver & Simulator Links
+    Driver --> UC3
+    Simulator --> UC4
+    Driver --> UC5
+
+    %% Admin Links
+    Admin --> UC6
+    Admin --> UC7
+    Admin --> UC8
+
+    %% Internal System triggers (optional but good for context)
+    UC4 -.->|Triggers| UC2
+    UC4 -.->|Triggers| UC8
+
+    classDef actor fill:#f9f9f9,stroke:#333,stroke-width:2px,color:#000;
+    class Customer,Driver,Admin,Simulator actor;

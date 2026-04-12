@@ -1,0 +1,39 @@
+sequenceDiagram
+    autonumber
+    participant Sim as GPX Simulator (Go)
+    participant Raw as Topic: raw-location-events
+    participant Streams as Kafka Streams (Java)
+    participant State as RocksDB State Store
+    participant Alert as Topic: alerts
+    participant Processed as Topic: processed-updates
+    participant WS as WebSocket Hub (Go)
+    participant UI as Client UI
+
+    Sim->>Raw: Publish JSON {driver_id, lat, lng, timestamp}
+    Raw->>Streams: Consume Event
+    
+    Streams->>Streams: Filter Invalid Coordinates
+    
+    Streams->>State: Get Previous Location
+    State-->>Streams: Return Previous Location
+    Streams->>Streams: Calculate Speed (Distance / Time)
+    Streams->>State: Save Current Location
+    
+    Streams->>Streams: 30s Tumbling Window (Calculate Avg Speed)
+    Streams->>Streams: Lookup Destination & Calculate ETA
+    
+    alt Speed > 60 km/h
+        Streams->>Alert: Publish SPEEDING Alert
+    end
+    
+    alt Distance < 500m
+        Streams->>Alert: Publish PROXIMITY Alert
+    end
+    
+    Streams->>Processed: Publish Enriched Location (Valid points)
+    
+    par Real-Time Push
+        Processed->>WS: Consume Feed
+        Alert->>WS: Consume Feed
+        WS->>UI: Broadcast JSON via WebSockets
+    end

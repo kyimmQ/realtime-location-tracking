@@ -1,0 +1,43 @@
+erDiagram
+    ORDERS ||--o{ TRIP_LOCATIONS : "generates points for"
+    ORDERS ||--|| TRIP_METADATA : "is summarized by"
+    TRIP_METADATA }|--|| DRIVER_ANALYTICS : "aggregates into"
+    TRIP_LOCATIONS ||--o{ ALERTS : "can trigger"
+
+    ORDERS {
+        UUID order_id PK
+        UUID customer_id
+        UUID driver_id
+        TEXT status
+        TIMESTAMP created_at
+    }
+
+    TRIP_LOCATIONS {
+        UUID trip_id PK "Partition Key"
+        TIMESTAMP timestamp "Clustering Key (DESC)"
+        DOUBLE latitude
+        DOUBLE longitude
+        DOUBLE speed
+    }
+
+    TRIP_METADATA {
+        UUID trip_id PK
+        DOUBLE total_distance
+        INT total_duration
+        DECIMAL trip_cost
+    }
+
+    DRIVER_ANALYTICS {
+        UUID driver_id PK "Partition Key"
+        DATE week_start_date  "Clustering Key"
+        INT total_trips
+        DOUBLE average_speed
+    }
+
+    ALERTS {
+        UUID driver_id PK "Partition Key"
+        TIMESTAMP timestamp "Clustering Key"
+        UUID alert_id "Clustering Key"
+        TEXT alert_type
+        TEXT severity
+    }

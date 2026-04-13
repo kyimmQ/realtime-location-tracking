@@ -62,32 +62,40 @@ Bốn yêu cầu xử lý thời gian thực cụ thể:
 \subsection{Nhóm yêu cầu quản lý dữ liệu \& phân tích (Cassandra)}
 \label{sec:analytics-requirements}
 
-\begin{itemize}
+Trong bài toán theo dõi giao hàng, việc lưu trữ toàn bộ dữ liệu lịch sử GPS và thông tin chuyến đi tạo ra một thách thức khổng lồ về mặt \textit{Volume} (khối lượng) và \textit{Velocity} (tốc độ ghi). Các hệ thống cơ sở dữ liệu quan hệ truyền thống (RDBMS) như MySQL hay PostgreSQL thường được thiết kế tối ưu cho các thao tác đọc (read-heavy) và đảm bảo tính toàn vẹn ACID, do đó bộc lộ nhiều điểm yếu chí mạng khi đối mặt với luồng dữ liệu IoT/GPS: nghẽn cổ chai khi số lượng giao dịch ghi (write transactions) tăng vọt, chi phí phần cứng đắt đỏ khi phải mở rộng dọc (vertical scaling), và sự phức tạp cùng rủi ro điểm lỗi đơn lẻ (\textit{Single Point of Failure} - SPOF) khi thực hiện phân mảnh dữ liệu (sharding). Để đáp ứng việc lưu trữ hàng tỷ bản ghi mỗi năm phục vụ truy xuất lịch sử và phân tích, hệ thống cần một giải pháp cơ sở dữ liệu phân tán thiết kế chuyên biệt cho thao tác ghi.
 
+Apache Cassandra được chọn làm cơ sở dữ liệu cốt lõi cho nhóm yêu cầu này vì ba lý do chính:
+\begin{enumerate}
+    \item \textbf{Khả năng ghi tốc độ cực cao (\textit{High Write Throughput}):} Khác với RDBMS sử dụng B-Tree, Cassandra sử dụng cấu trúc \textit{Log-Structured Merge-Tree} (LSM-Tree) kết hợp \textit{Commit Log} và \textit{Memtable}, cho phép ghi dữ liệu tuần tự xuống đĩa với tốc độ cực nhanh mà không bị khóa (lock-free), cực kỳ phù hợp cho luồng dữ liệu \textit{write-heavy} như hệ thống GPS tracking.
+    \item \textbf{Mở rộng ngang tuyến tính \& Không điểm lỗi đơn lẻ (\textit{Linear Scalability \& Masterless Architecture}):} Kiến trúc mạng lưới ngang hàng (\textit{peer-to-peer}) không có node chủ (master) giúp hệ thống phân tán đều dữ liệu và loại bỏ hoàn toàn SPOF. Việc tăng tải chỉ đơn giản là thêm node mới vào cụm (\textit{cluster}) mà không gây gián đoạn dịch vụ.
+    \item \textbf{Mô hình dữ liệu tối ưu cho Time-Series (\textit{Time-Series Data Modeling}):} Cơ chế phân vùng (\textit{Partition Key}) và gom cụm (\textit{Clustering Key}) của Cassandra cho phép lưu trữ tập trung dữ liệu GPS của một chuyến đi trên cùng một node và tự động sắp xếp theo thứ tự thời gian, giúp các truy vấn lịch sử hành trình đạt hiệu suất đọc tối đa.
+\end{enumerate}
+
+Bốn yêu cầu quản lý dữ liệu và phân tích cụ thể:
+
+\begin{itemize}
 % --- DA5 ---
 \item \textbf{Phát lại lịch sử hành trình (Trip History \& Playback)}
-\begin{itemize}
-    \item \textbf{Bảng truy vấn:} \texttt{trip\_locations} — partitioned by \texttt{trip\_id}, clustered by \texttt{timestamp DESC}.
-    \item \textbf{Query:} \texttt{SELECT * FROM trip\_locations WHERE trip\_id = ? ORDER BY timestamp ASC}.
-    \item \textbf{Lý do cần lưu trữ:} Dữ liệu GPS trace cần được giữ lại vô thời hạn để phục vụ điều tra tranh chấp, quyết toán chi phí, và tuân thủ pháp luật. Mỗi chuyến đi có thể có hàng nghìn điểm GPS.
-\end{itemize}
-
+    \begin{itemize}
+        \item \textbf{Bảng truy vấn:} \texttt{trip\_locations} — \textit{Partition Key} là \texttt{trip\_id} (để gom toàn bộ điểm GPS của một chuyến đi vào cùng một node), \textit{Clustering Key} là \texttt{timestamp DESC} (sắp xếp giảm dần theo thời gian).
+        \item \textbf{Query:} \texttt{SELECT * FROM trip\_locations WHERE trip\_id = ?}
+        \item \textbf{Lý do cần lưu trữ:} Dữ liệu quỹ đạo GPS (GPS trace) cần được giữ lại nguyên vẹn và vô thời hạn để phục vụ điều tra khiếu nại của khách hàng (dispute resolution), tra soát lộ trình thực tế và tuân thủ các quy định pháp lý về lưu trữ dữ liệu hành trình. Số lượng bản ghi cho mỗi chuyến đi có thể lên tới hàng nghìn điểm, đòi hỏi tốc độ ghi cực cao.
+    \end{itemize}
 % --- DA6 ---
 \item \textbf{Phân tích hiệu suất tài xế (Driver Performance Analytics)}
-\begin{itemize}
-    \item \textbf{Bảng truy vấn:} \texttt{driver\_analytics} — partitioned by \texttt{driver\_id}, clustered by \texttt{week\_start\_date DESC}.
-    \item \textbf{Query:} Tổng hợp từ \texttt{trip\_metadata}: \texttt{SUM(total\_distance), AVG(average\_speed), COUNT(speeding\_violations)}.
-    \item \textbf{Lý do cần lưu trữ:} Quản lý đội xe cần báo cáo hiệu suất theo tuần để đánh giá tài xế, xác định người có tỷ lệ vi phạm cao, và tối ưu lịch trình.
-\end{itemize}
-
+   \begin{itemize}
+        \item \textbf{Bảng truy vấn:} \texttt{driver\_analytics} — \textit{Partition Key} là \texttt{driver\_id}, \textit{Clustering Key} là \texttt{week\_start\_date DESC}. (Lưu ý: Các chỉ số được hệ thống Streaming tổng hợp sẵn và ghi xuống, vì Cassandra không tối ưu cho lệnh SUM/AVG trực tiếp).
+        \item \textbf{Query:} Tổng hợp từ \texttt{trip\_metadata}: \texttt{SUM(total\_distance), AVG(average\_speed), COUNT(speeding\_violations)}.
+        \item \textbf{Lý do cần lưu trữ:} Quản lý đội xe (Fleet Manager) cần theo dõi các chỉ số hiệu suất (KPIs) của tài xế theo từng tuần/tháng. Dữ liệu này là cơ sở để hệ thống đưa ra các chính sách thưởng/phạt tự động, xác định tài xế có rủi ro vi phạm an toàn cao và tối ưu hóa chất lượng dịch vụ.
+    \end{itemize}   
 % --- DA7 ---
 \item \textbf{Tính cước phí giao hàng tự động (Automated Delivery Cost Calculation)}
-\begin{itemize}
-    \item \textbf{Bảng truy vấn:} \texttt{trip\_metadata} — lưu \texttt{total\_distance} (km) và \texttt{total\_duration} (phút).
-    \item \textbf{Công thức:} \texttt{cost = 3.00 + (0.50 × distance\_km) + (0.10 × duration\_min)}.
-    \item \textbf{Lý do cần lưu trữ:} Cước phí phải được tính chính xác từ GPS trace thực tế, không phải ước lượng. Dữ liệu cần được lưu để khách hàng và tài xế có thể kiểm chứng.
-\end{itemize}
-
+    \begin{itemize}
+        \item \textbf{Bảng truy vấn:} \texttt{trip\_metadata} — \textit{Partition Key} là \texttt{trip\_id}. Bảng này lưu trữ kết quả cuối cùng bao gồm tổng quãng đường (\texttt{distance\_km}), tổng thời gian (\texttt{duration\_min}). 
+        \item \textbf{Công thức:} \texttt{cost = 3.00 + (0.50 × distance\_km) + (0.10 × duration\_min)}.
+        \item \textbf{Truy vấn hiển thị:} \texttt{SELECT distance\_km, duration\_min, cost FROM trip\_metadata WHERE trip\_id = ?}
+        \item \textbf{Lý do cần lưu trữ:} Cước phí chuyến đi phải minh bạch và được tính toán chuẩn xác dựa trên dữ liệu di chuyển thực tế thay vì mức giá ước lượng ban đầu. Việc lưu trữ \texttt{trip\_metadata} đảm bảo tính bất biến (immutable) của hóa đơn sau khi chuyến đi kết thúc, giúp cả tài xế và khách hàng có thể đối soát lại bất kỳ lúc nào.
+    \end{itemize}
 % --- DA8 ---
 \item \textbf{Bản đồ nhiệt khu vực dịch vụ (Service Area Heatmaps)}
 \begin{itemize}
@@ -95,7 +103,7 @@ Bốn yêu cầu xử lý thời gian thực cụ thể:
     \item \textbf{Query pattern:} \texttt{SELECT latitude, longitude FROM trip\_locations WHERE ...}.
     \item \textbf{Lý do cần lưu trữ:} Quản trị viên cần biết khu vực nào có nhu cầu cao để tối ưu phân bổ tài xế, và khu vực nào có ít đơn hàng để điều chỉnh chiến lược marketing.
 \end{itemize}
-
+    
 \end{itemize}
 
 \bigskip

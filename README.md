@@ -143,7 +143,7 @@ cqlsh -f schema/cassandra-init.cql
 ```bash
 cd stream-processor
 ./gradlew build
-java -jar build/libs/stream-processor.jar
+java -jar app/build/libs/stream-processor.jar
 ```
 
 ### 4. Run API Server

@@ -47,12 +47,5 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  stream-processor:
-    image: stream-processor:latest
-    container_name: stream-processor
-    depends_on:
-      - kafka
-    command: kafka:29092
-
 volumes:
   postgres_data:

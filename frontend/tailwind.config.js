@@ -31,15 +31,22 @@ export default {
         },
         driver: {
           50:  '#EFF6FF',
+          100: '#DBEAFE',
+          200: '#BFDBFE',
+          400: '#60A5FA',
           500: '#3B82F6',   // blue
           600: '#2563EB',
           700: '#1D4ED8',
+          800: '#1E40AF',
         },
         admin: {
           50:  '#F5F3FF',
+          100: '#EDE9FE',
+          400: '#A78BFA',
           500: '#6366F1',   // indigo
           600: '#4F46E5',
           700: '#4338CA',
+          800: '#3730A3',
         },
         // Neutrals
         surface: {
@@ -54,15 +61,37 @@ export default {
           800: '#27272A',
           900: '#18181B',
         },
+        // Sidebar dark (deshipping design system)
+        sidebar: {
+          DEFAULT: '#3A2E25',
+          hover: '#4A3D32',
+          active: '#5C4D3C',
+          border: '#4A3D32',
+          text: '#FFFFFF',
+          textMuted: '#C8B8A4',
+        },
+        // Kinetic Flow surface hierarchy (cream/warm base)
+        'surface-base': '#FFF8F5',
+        'surface-container': {
+          lowest: '#FFFFFF',
+          low: '#FFF1E9',
+          DEFAULT: '#FFEADD',
+          high: '#F9E4D7',
+          highest: '#F3DFD1',
+        },
       },
 
       // ─── Typography ──────────────────────────────────────────────────────────
       fontFamily: {
-        sans: ['"DM Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Manrope', '"DM Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        headline: ['"Plus Jakarta Sans"', 'Manrope', '"DM Sans"', 'ui-sans-serif', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       fontSize: {
         '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
+        'display-lg': ['3.5rem', { lineHeight: '1.1', letterSpacing: '-0.02em' }],
+        'display-md': ['2.5rem', { lineHeight: '1.15', letterSpacing: '-0.02em' }],
+        'display-sm': ['1.875rem', { lineHeight: '1.2', letterSpacing: '-0.01em' }],
       },
 
       // ─── Shadows ─────────────────────────────────────────────────────────────
@@ -93,10 +122,22 @@ export default {
           '0%':   { opacity: '0', transform: 'translateY(16px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        'slide-in-right': {
+          '0%':   { opacity: '0', transform: 'translateX(16px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
         'pulse-ring': {
           '0%':   { transform: 'scale(0.95)', opacity: '0.8' },
           '50%':  { transform: 'scale(1.05)', opacity: '0.4' },
           '100%': { transform: 'scale(0.95)', opacity: '0.8' },
+        },
+        'pulse-dot': {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%':       { opacity: '0.6', transform: 'scale(1.3)' },
+        },
+        'breathe': {
+          '0%, 100%': { opacity: '0.6' },
+          '50%':       { opacity: '1' },
         },
         'spin-slow': {
           '0%':   { transform: 'rotate(0deg)' },
@@ -111,14 +152,22 @@ export default {
           '60%':  { transform: 'scale(1.05)', opacity: '1' },
           '100%': { transform: 'scale(1)' },
         },
+        'float': {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%':       { transform: 'translateY(-8px)' },
+        },
       },
       animation: {
         'fade-in':       'fade-in 0.3s ease-out',
         'slide-up':      'slide-up 0.4s ease-out',
+        'slide-in-right':'slide-in-right 0.35s ease-out',
         'pulse-ring':    'pulse-ring 2s ease-in-out infinite',
+        'pulse-dot':     'pulse-dot 1.5s ease-in-out infinite',
+        'breathe':        'breathe 2s ease-in-out infinite',
         'spin-slow':     'spin-slow 3s linear infinite',
         'shimmer':       'shimmer 2s linear infinite',
         'bounce-in':     'bounce-in 0.35s ease-out',
+        'float':         'float 3s ease-in-out infinite',
       },
 
       // ─── Z-Index Scale ───────────────────────────────────────────────────────

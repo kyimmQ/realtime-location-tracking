@@ -23,21 +23,23 @@ export function TrackingPage() {
 
   const { accessToken, isLoading: authLoading } = useAuth()
   const { setRoutePoints } = useTrackingStore()
-  const [, setOrderStatus] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   const { setPosition, update, addPathPoint, etaSeconds, distanceKm, speed, driverPosition, driverId, setDriverId } = useTrackingStore()
+  const [orderStatus, setOrderStatus] = useState<string | null>(null)
   const { alerts } = useAlertStore()
 
-  // ── Fetch order details (route_points) on mount ────────────────────────
+  // ── Fetch order details and poll for status changes ───────────────────────
   useEffect(() => {
     if (!id || !accessToken || authLoading) return
 
-    const fetchOrder = async () => {
-      setFetchError(null)
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
 
+    let disposed = false
+
+    const fetchOrder = async () => {
+      if (disposed) return
       try {
         const res = await fetch(`${API_BASE}/api/orders/${id}`, { headers })
         if (res.ok) {
@@ -45,6 +47,9 @@ export function TrackingPage() {
           setOrderStatus(data.status ?? null)
           if (data.route_points) {
             setRoutePoints(data.route_points as [number, number][])
+          }
+          if (data.driver_id && !driverId) {
+            setDriverId(data.driver_id)
           }
         } else if (res.status === 401) {
           setFetchError('Authentication required. Please refresh the page.')
@@ -57,6 +62,12 @@ export function TrackingPage() {
     }
 
     fetchOrder()
+    const interval = setInterval(fetchOrder, 3000)
+
+    return () => {
+      disposed = true
+      clearInterval(interval)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, accessToken, authLoading])
 
@@ -84,7 +95,34 @@ export function TrackingPage() {
     enabled: !!accessToken && !authLoading,
   })
 
-  const isActive = !!driverPosition
+  const isActive = !!driverPosition || orderStatus === 'IN_TRANSIT' || orderStatus === 'ARRIVING'
+  const isDelivered = orderStatus === 'DELIVERED'
+
+  const statusLabel = (() => {
+    if (isDelivered) return 'Delivered'
+    switch (orderStatus) {
+      case 'PENDING': return 'Searching for Driver…'
+      case 'ASSIGNED':
+      case 'ACCEPTED': return 'Driver Assigned — Heading to Restaurant'
+      case 'PICKING_UP': return 'Driver is Picking Up Your Order'
+      case 'IN_TRANSIT': return 'Your Order is On the Way'
+      case 'ARRIVING': return 'Driver is Almost There!'
+      default: return 'Waiting for Driver…'
+    }
+  })()
+
+  const statusDesc = (() => {
+    if (isDelivered) return 'Your order has been delivered. Enjoy!'
+    switch (orderStatus) {
+      case 'PENDING': return 'We are finding the best driver for your order'
+      case 'ASSIGNED':
+      case 'ACCEPTED': return 'Your driver is on the way to the restaurant'
+      case 'PICKING_UP': return 'Your driver is picking up the order from the restaurant'
+      case 'IN_TRANSIT': return 'Real-time tracking powered by Deshipping'
+      case 'ARRIVING': return 'Your driver is just around the corner'
+      default: return 'Your driver will begin the delivery shortly'
+    }
+  })()
 
   return (
     <div className="page-container max-w-2xl mx-auto">
@@ -94,16 +132,14 @@ export function TrackingPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-surface-900 tracking-tight">
-              {isActive ? 'Your Order is On the Way' : 'Waiting for Driver…'}
+              {statusLabel}
             </h1>
             <p className="text-sm text-surface-500 mt-1">
-              {isActive
-                ? 'Real-time tracking powered by Deshipping'
-                : 'Your driver will begin the delivery shortly'}
+              {statusDesc}
             </p>
           </div>
-          <Badge variant={isActive ? 'success' : 'neutral'} dot>
-            {isActive ? 'Live' : 'Standby'}
+          <Badge variant={isDelivered ? 'success' : isActive ? 'success' : 'neutral'} dot>
+            {isDelivered ? 'Done' : isActive ? 'Live' : 'Standby'}
           </Badge>
         </div>
       </div>

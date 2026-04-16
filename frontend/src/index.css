@@ -1,20 +1,36 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ─── CSS Custom Properties (design tokens) ─────────────────────────────── */
+/* ─── CSS Custom Properties (design tokens — Deshipping Velocity) ─────────── */
 :root {
-  /* Brand */
+  /* Brand Orange */
   --color-primary:       #F97316;
   --color-primary-hover: #EA580C;
   --color-primary-light: #FFEDD5;
+  --color-primary-dark: #904d00;
+  --color-primary-container: #FF8C00;
 
   /* Role accents */
   --color-customer: #F97316;
   --color-driver:  #3B82F6;
   --color-admin:   #6366F1;
+
+  /* Driver blue (from Stitch DS) */
+  --color-driver-50: #EFF6FF;
+  --color-driver-500: #3B82F6;
+  --color-driver-600: #2563EB;
+  --color-driver-700: #1D4ED8;
+
+  /* Admin indigo/purple (from Stitch DS) */
+  --color-admin-50: #F5F3FF;
+  --color-admin-500: #6366F1;
+  --color-admin-600: #4F46E5;
+  --color-admin-700: #4338CA;
+  --color-admin-tertiary: #8D2EBC;
+  --color-admin-tertiary-container: #D98AFF;
 
   /* Status */
   --color-success: #22C55E;
@@ -28,20 +44,30 @@
   --color-text-muted:     #A1A1AA;
   --color-text-inverse:   #FFFFFF;
 
-  /* Surface */
-  --color-bg:       #F4F4F5;
-  --color-surface:  #FFFFFF;
-  --color-border:   #E4E4E7;
+  /* Surface — Kinetic Flow tonal hierarchy */
+  --color-surface-base:       #FFF8F5;
+  --color-surface-container-lowest:  #FFFFFF;
+  --color-surface-container-low:     #FFF1E9;
+  --color-surface-container:          #FFEADD;
+  --color-surface-container-high:   #F9E4D7;
+  --color-surface-container-highest: #F3DFD1;
+  --color-surface-border: #E4E4E7;
+
+  /* Glass effect */
+  --color-glass: rgba(255, 255, 255, 0.7);
 
   /* Shadows */
   --shadow-card:    0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
   --shadow-card-hover: 0 4px 12px 0 rgb(0 0 0 / 0.10), 0 2px 4px -1px rgb(0 0 0 / 0.06);
   --shadow-navbar:  0 1px 0 0 rgb(0 0 0 / 0.06);
+  --shadow-glass:   0 8px 32px 0 rgb(0 0 0 / 0.08);
+  --shadow-ambient: 0 16px 40px 0 rgb(249 115 22 / 0.08);
 
   /* Radii */
   --radius-card:  0.75rem;
   --radius-badge: 9999px;
   --radius-btn:   0.5rem;
+  --radius-xl:    1.5rem;
 
   /* Transitions */
   --transition-fast:   150ms ease;
@@ -62,7 +88,7 @@
   }
 
   body {
-    @apply bg-surface-50 text-surface-900 font-sans;
+    @apply bg-surface-base text-surface-900 font-sans;
     min-height: 100dvh;
   }
 
@@ -257,26 +283,110 @@
     text-wrap: balance;
   }
 
+  /* Kinetic Flow gradients — 135deg brand movement */
+  .gradient-kinetic {
+    background: linear-gradient(135deg, #904d00 0%, #FF8C00 50%, #F97316 100%);
+  }
   .gradient-brand {
-    background: linear-gradient(135deg, theme('colors.brand.500'), theme('colors.brand.600'));
+    background: linear-gradient(135deg, #904d00 0%, #FF8C00 100%);
   }
   .gradient-customer {
-    background: linear-gradient(135deg, theme('colors.customer.500'), #ea580c);
+    background: linear-gradient(135deg, #904d00 0%, #FF8C00 100%);
   }
   .gradient-driver {
-    background: linear-gradient(135deg, theme('colors.driver.500'), #1d4ed8);
+    background: linear-gradient(135deg, #0058BC 0%, #0070EB 100%);
   }
   .gradient-admin {
-    background: linear-gradient(135deg, theme('colors.admin.500'), #4338ca);
+    background: linear-gradient(135deg, #8D2EBC 0%, #D98AFF 100%);
+  }
+  .gradient-surface {
+    background: linear-gradient(135deg, #FFF8F5 0%, #FFF1E9 100%);
   }
 
   .ring-customer { box-shadow: 0 0 0 3px rgb(249 115 22 / 0.25); }
   .ring-driver   { box-shadow: 0 0 0 3px rgb(59 130 246 / 0.25); }
   .ring-admin    { box-shadow: 0 0 0 3px rgb(99 102 241 / 0.25); }
 
-  /* Glass morphism */
+  /* Glass morphism — Kinetic Flow */
   .glass {
-    @apply bg-white/80 backdrop-blur-md;
-    border: 1px solid rgb(255 255 255 / 0.3);
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+  .glass-dark {
+    background: rgba(36, 25, 18, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .glass-surface {
+    background: rgba(255, 248, 245, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  /* Ambient glow shadows — tinted, not black */
+  .shadow-ambient-orange {
+    box-shadow: 0 16px 40px 0 rgb(249 115 22 / 0.12);
+  }
+  .shadow-ambient-blue {
+    box-shadow: 0 16px 40px 0 rgb(59 130 246 / 0.12);
+  }
+  .shadow-ambient-purple {
+    box-shadow: 0 16px 40px 0 rgb(99 102 241 / 0.12);
+  }
+
+  /* Surface container utilities */
+  .bg-surface-base { background-color: #FFF8F5; }
+  .bg-surface-container-lowest { background-color: #FFFFFF; }
+  .bg-surface-container-low { background-color: #FFF1E9; }
+  .bg-surface-container { background-color: #FFEADD; }
+  .bg-surface-container-high { background-color: #F9E4D7; }
+  .bg-surface-container-highest { background-color: #F3DFD1; }
+
+  /* No-line surface card (use bg shift instead of border) */
+  .card-surface {
+    background-color: #FFFFFF;
+    border-radius: 1.5rem;
+    box-shadow: 0 2px 8px 0 rgb(36 25 18 / 0.06);
+  }
+
+  /* Status pill — full rounded */
+  .status-pill {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold;
+  }
+
+  /* Pulse dot animation */
+  .pulse-dot {
+    @apply animate-pulse;
+  }
+
+  /* Text headline font */
+  .font-headline {
+    font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif;
+  }
+
+  /* Active order — orange pulse ring */
+  @keyframes order-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(249 115 22 / 0.45); }
+    50%       { box-shadow: 0 0 0 6px rgb(249 115 22 / 0); }
+  }
+  .animate-order-pulse {
+    animation: order-pulse 2s ease-in-out infinite;
+  }
+
+  /* Sidebar nav active indicator */
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer;
+    color: #C8B8A4;
+  }
+  .sidebar-nav-item:hover {
+    background-color: #4A3D32;
+    color: #FFFFFF;
+  }
+  .sidebar-nav-item.active {
+    background-color: #5C4D3C;
+    color: #FFFFFF;
   }
 }

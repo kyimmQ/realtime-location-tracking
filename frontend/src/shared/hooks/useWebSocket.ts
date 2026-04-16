@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import type { WebSocketMessage } from '../types';
 
 interface UseWebSocketOptions {
@@ -16,88 +16,95 @@ export function useWebSocket({ url, onMessage, onOpen, onClose, driverId, orderI
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const authDoneRef = useRef(false);
 
-  const connectRef = useRef<() => void>(() => {});
+  // Store latest callbacks in refs so the connection is never torn down
+  // when they change — only when url/authToken/orderId/driverId change.
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  const connect = useCallback(() => {
-    console.log('[WS] Connecting to', url, 'enabled:', enabled, 'authToken:', !!authToken);
-    wsRef.current = new WebSocket(url);
-    authDoneRef.current = false;
-
-    wsRef.current.onopen = () => {
-      console.log('[WS] Connected, authToken:', !!authToken);
-      retryCountRef.current = 0;
-
-      // If auth token provided, authenticate first
-      if (authToken) {
-        wsRef.current?.send(JSON.stringify({ action: 'auth', token: authToken }));
-      } else {
-        // No auth - send subscribe directly
-        const msg = orderId
-          ? { action: 'subscribe', order_id: orderId }
-          : { action: 'subscribe', driver_id: driverId || 'D001' };
-        wsRef.current?.send(JSON.stringify(msg));
-        onOpen?.(wsRef.current!);
-      }
-    };
-
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      // Handle auth response
-      if (data.type === 'auth_success' && authToken) {
-        authDoneRef.current = true;
-        const msg = orderId
-          ? { action: 'subscribe', order_id: orderId }
-          : { action: 'subscribe', driver_id: driverId || 'D001' };
-        wsRef.current?.send(JSON.stringify(msg));
-        onOpen?.(wsRef.current!);
-        return;
-      }
-
-      if (data.type === 'auth_error') {
-        console.error('WebSocket auth failed:', data.error);
-        wsRef.current?.close();
-        return;
-      }
-
-      onMessage(data);
-    };
-
-    wsRef.current.onclose = (e) => {
-      console.log('[WS] Closed', e.code, e.reason);
-      onClose?.();
-      // Only retry if enabled and not intentionally closed
-      if (enabled !== false && wsRef.current?.readyState === WebSocket.CLOSED) {
-        const delay = Math.min(1000 * 2 ** retryCountRef.current, 30000);
-        retryCountRef.current++;
-        retryTimeoutRef.current = setTimeout(() => {
-          if (connectRef.current) {
-            connectRef.current();
-          }
-        }, delay);
-      }
-    };
-
-    wsRef.current.onerror = (e) => {
-      console.log('[WS] Error', e);
-    };
-  }, [url, onMessage, onOpen, onClose, driverId, orderId, authToken]);
+  // Stable connection key: only reconnect when these truly change
+  const connectKey = `${url}|${authToken}|${orderId}|${driverId}`;
 
   useEffect(() => {
-    connectRef.current = connect;
-  }, [connect]);
+    if (!enabled) return;
 
-  useEffect(() => {
-    if (enabled === false) return;
+    let disposed = false;
+
+    const connect = () => {
+      if (disposed) return;
+      console.log('[WS] Connecting to', url, 'authToken:', !!authToken);
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (disposed) return;
+        console.log('[WS] Connected');
+        retryCountRef.current = 0;
+
+        if (authToken) {
+          ws.send(JSON.stringify({ action: 'auth', token: authToken }));
+        } else {
+          const msg = orderId
+            ? { action: 'subscribe', order_id: orderId }
+            : { action: 'subscribe', driver_id: driverId || 'D001' };
+          ws.send(JSON.stringify(msg));
+          onOpenRef.current?.(ws);
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (disposed) return;
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'auth_success' && authToken) {
+          const msg = orderId
+            ? { action: 'subscribe', order_id: orderId }
+            : { action: 'subscribe', driver_id: driverId || 'D001' };
+          ws.send(JSON.stringify(msg));
+          onOpenRef.current?.(ws);
+          return;
+        }
+
+        if (data.type === 'auth_error') {
+          console.error('[WS] Auth failed:', data.error);
+          ws.close();
+          return;
+        }
+
+        onMessageRef.current(data);
+      };
+
+      ws.onclose = (e) => {
+        if (disposed) return;
+        console.log('[WS] Closed', e.code, e.reason);
+        onCloseRef.current?.();
+        if (!disposed && enabled) {
+          const delay = Math.min(1000 * 2 ** retryCountRef.current, 30000);
+          retryCountRef.current++;
+          retryTimeoutRef.current = setTimeout(connect, delay);
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose will fire after onerror
+      };
+    };
+
     connect();
+
     return () => {
+      disposed = true;
       clearTimeout(retryTimeoutRef.current);
       if (wsRef.current) {
         wsRef.current.onclose = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [connect, enabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectKey, enabled]);
 }

@@ -127,6 +127,7 @@ func (h *Hub) BroadcastLocation(driverID string, message map[string]interface{})
 		for client := range clients {
 			select {
 			case client.Send <- payload:
+				log.Printf("[WebSocket] Pushed location for driver %s to subscriber %s (%s)", driverID, client.UserID, client.Role)
 			default:
 			}
 		}
@@ -140,6 +141,7 @@ func (h *Hub) BroadcastLocation(driverID string, message map[string]interface{})
 				for client := range clients {
 					select {
 					case client.Send <- payload:
+						log.Printf("[WebSocket] Pushed location for order %s to subscriber %s (%s)", orderID, client.UserID, client.Role)
 					default:
 					}
 				}

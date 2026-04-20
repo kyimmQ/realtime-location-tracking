@@ -13,6 +13,17 @@ done
 echo "Cassandra is up. Initializing schema..."
 docker exec -i cassandra cqlsh < scripts/init-cql.cql
 
+echo "Waiting for Postgres to start..."
+# Wait until Postgres is ready
+until docker exec postgres pg_isready -U postgres > /dev/null 2>&1; do
+  echo "Postgres is unavailable - sleeping"
+  sleep 2
+done
+
+echo "Postgres is up. Initializing schema and data..."
+docker exec -i postgres psql -U postgres -d delivery_tracking < scripts/init-postgres.sql
+docker exec -i postgres psql -U postgres -d delivery_tracking < scripts/seed-postgres.sql
+
 echo "Waiting for Kafka to be ready..."
 # Wait until Kafka is ready
 until docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 > /dev/null 2>&1; do

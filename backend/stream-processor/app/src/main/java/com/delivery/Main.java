@@ -87,7 +87,13 @@ public class Main {
         KStream<String, LocationEvent> rawStream = builder.stream(
                 "raw-location-events",
                 Consumed.with(Serdes.String(), locationEventSerde)
-        ).selectKey((k, v) -> v != null ? v.getDriverId() : "unknown");
+        )
+        .peek((k, v) -> {
+            if (v != null) {
+                System.out.println("[IN] Raw event received: Order=" + v.getOrderId() + " Driver=" + v.getDriverId() + " (" + v.getLatitude() + "," + v.getLongitude() + ")");
+            }
+        })
+        .selectKey((k, v) -> v != null ? v.getDriverId() : "unknown");
 
         // Requirement 1: Filter Invalid Coordinates
         Predicate<String, LocationEvent> validCoordinates = (key, event) ->
@@ -166,14 +172,10 @@ public class Main {
                 Joined.with(Serdes.String(), enrichedLocationSerde, destinationSerde)
         );
 
-        KStream<String, EnrichedLocation>[] branches = fullyEnrichedStream.branch(
-                (key, value) -> value.isSpeeding(),
-                (key, value) -> value.getDistanceToDestination() > 0 && value.getDistanceToDestination() < 0.5,
-                (key, value) -> true
-        );
-
-        // Branch 0: Speeding
-        branches[0].map((key, loc) -> {
+        // Emit alerts as side outputs, while always forwarding the location update stream.
+        fullyEnrichedStream
+        .filter((key, loc) -> loc.isSpeeding())
+        .map((key, loc) -> {
             Alert alert = new Alert(
                     UUID.randomUUID().toString(),
                     loc.getDriverId(),
@@ -189,10 +191,13 @@ public class Main {
                     )
             );
             return new KeyValue<>(key, alert);
-        }).to("alerts", Produced.with(Serdes.String(), alertSerde));
+        })
+        .peek((k, alert) -> System.out.println("[OUT] SPEEDING Alert: Driver=" + alert.getDriverId() + " -> " + alert.getMessage()))
+        .to("alerts", Produced.with(Serdes.String(), alertSerde));
 
-        // Branch 1: Proximity
-        branches[1].map((key, loc) -> {
+        fullyEnrichedStream
+        .filter((key, loc) -> loc.getDistanceToDestination() > 0 && loc.getDistanceToDestination() < 0.5)
+        .map((key, loc) -> {
             Alert alert = new Alert(
                     UUID.randomUUID().toString(),
                     loc.getDriverId(),
@@ -207,10 +212,13 @@ public class Main {
                     )
             );
             return new KeyValue<>(key, alert);
-        }).to("alerts", Produced.with(Serdes.String(), alertSerde));
+        })
+        .peek((k, alert) -> System.out.println("[OUT] PROXIMITY Alert: Driver=" + alert.getDriverId() + " -> " + alert.getMessage()))
+        .to("alerts", Produced.with(Serdes.String(), alertSerde));
 
-        // Branch 2: Valid
-        branches[2].to("processed-updates", Produced.with(Serdes.String(), enrichedLocationSerde));
+        fullyEnrichedStream
+            .peek((k, loc) -> System.out.println("[OUT] Processed Update: Order=" + loc.getOrderId() + " Driver=" + loc.getDriverId() + " Speed=" + String.format("%.1f", loc.getSpeed()) + " DistToDest=" + (loc.getDistanceToDestination() > 0 ? String.format("%.2fkm", loc.getDistanceToDestination()) : "N/A")))
+            .to("processed-updates", Produced.with(Serdes.String(), enrichedLocationSerde));
 
         return builder.build();
     }

@@ -10,6 +10,7 @@ import (
 	"delivery-tracking/internal/gpx"
 	"delivery-tracking/internal/postgres"
 	"delivery-tracking/internal/simulator"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -82,7 +83,7 @@ func formatPoint(pt gpx.RoutePoint) string {
 // PUT /api/orders/:id/status - Update order status
 func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 	orderID := c.Param("id")
-	_, _ = c.Get("user_id")
+	userID, _ := c.Get("user_id")
 	role, _ := c.Get("role")
 
 	var req struct {
@@ -117,7 +118,7 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 			"CANCELLED": true,
 		},
 		"DRIVER": {
-			"ACCEPTED":  currentStatus == "ASSIGNED" || currentStatus == "PENDING",
+			"ACCEPTED":   currentStatus == "ASSIGNED" || currentStatus == "PENDING",
 			"PICKING_UP": currentStatus == "ACCEPTED",
 			"IN_TRANSIT": currentStatus == "PICKING_UP" || currentStatus == "IN_TRANSIT",
 			"ARRIVING":   currentStatus == "IN_TRANSIT",
@@ -131,18 +132,21 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
-	// If driver reassignment needed (no driver assigned yet)
+	// If driver assignment needed (no driver assigned yet)
 	if roleStr == "DRIVER" && req.Status == "ACCEPTED" && driverID == nil {
-		driverRow, _ := pg.QueryRow(c.Request.Context(),
-			`UPDATE driver_profiles
-             SET status = 'BUSY'
-             WHERE user_id = (
-                 SELECT user_id FROM driver_profiles WHERE status = 'AVAILABLE' LIMIT 1
-             )
-             RETURNING user_id::text`)
-		if driverRow != nil && len(driverRow) > 0 {
-			newDriverID := driverRow[0].(string)
-			driverID = &newDriverID
+		driverIDStr, ok := userID.(string)
+		if ok {
+			driverRow, _ := pg.QueryRow(c.Request.Context(),
+				`UPDATE driver_profiles
+                 SET status = 'BUSY'
+                 WHERE user_id = $1
+                 RETURNING user_id::text`, driverIDStr)
+			if driverRow != nil && len(driverRow) > 0 {
+				newDriverID := driverRow[0].(string)
+				driverID = &newDriverID
+			} else {
+				driverID = &driverIDStr
+			}
 		}
 	}
 
@@ -161,13 +165,12 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 		return
 	}
 
+	fmt.Println("Order status updated to", req.Status)
+	fmt.Println("Driver ID:", driverID)
 	// If PICKING_UP, trigger simulator
-	if req.Status == "PICKING_UP" && driverID != nil {
+	if req.Status == "IN_TRANSIT" && driverID != nil {
 		sim := simulator.GetTrigger()
 		if sim != nil {
-			// First set status to IN_TRANSIT
-			pg.Exec(c.Request.Context(),
-				"UPDATE orders SET status = 'IN_TRANSIT', updated_at = NOW() WHERE id = $1", orderID)
 			// Use background context so simulator continues after HTTP request ends
 			go sim.Trigger(context.Background(), orderID, *driverID, 1000)
 		}

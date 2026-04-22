@@ -5,6 +5,7 @@ import { DriverAnalytics } from './DriverAnalytics'
 import { ServiceHeatmap } from './ServiceHeatmap'
 import { AlertFeed } from './AlertFeed'
 import { useWebSocket } from '../../shared/hooks/useWebSocket'
+import { useAuth } from '../../shared/hooks/useAuth'
 import type { WebSocketMessage } from '../../shared/types'
 
 type TabId = 'alerts' | 'playback' | 'analytics' | 'heatmap'
@@ -59,6 +60,7 @@ export function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabId>('alerts')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { addAlert } = useAdminStore()
+  const { accessToken, isLoading } = useAuth()
 
   const handleMessage = useCallback((data: WebSocketMessage) => {
     if (data.type === 'alert') {
@@ -69,6 +71,8 @@ export function AdminPage() {
   useWebSocket({
     url: WS_URL,
     onMessage: handleMessage,
+    authToken: accessToken ?? undefined,
+    enabled: !isLoading && !!accessToken,
     onOpen: (ws: WebSocket) => {
       ws.send(JSON.stringify({ action: 'subscribe_alerts' }))
     },

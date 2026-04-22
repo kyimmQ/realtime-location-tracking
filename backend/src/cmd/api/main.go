@@ -60,7 +60,7 @@ func main() {
 	go hub.Run()
 
 	// Kafka consumers (processed-updates + alerts)
-	locationConsumer, err := websocket.NewConsumer(kafkaBrokers, "processed-updates", hub)
+	locationConsumer, err := websocket.NewConsumer(kafkaBrokers, "processed-updates", hub, cassandraClient)
 	if err != nil {
 		log.Fatalf("Location consumer failed: %v", err)
 	}

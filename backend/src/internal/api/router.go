@@ -14,6 +14,7 @@ import (
 	"delivery-tracking/internal/postgres"
 	"delivery-tracking/internal/simulator"
 	ws "delivery-tracking/internal/websocket"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -41,7 +42,7 @@ func SetupRouter(hub *ws.Hub, cassandraClient *cassandra.Client, pgClient *postg
 
 	// Initialize simulator trigger
 	if kafkaProducer != nil && gpxService != nil {
-		simulator.NewTrigger(kafkaProducer, gpxService)
+		simulator.NewTrigger(kafkaProducer, gpxService, cassandraClient)
 	}
 
 	// WebSocket Endpoint
@@ -78,6 +79,7 @@ func SetupRouter(hub *ws.Hub, cassandraClient *cassandra.Client, pgClient *postg
 		protected.GET("/orders/:id/route", orderHandler.GetOrderRoute)
 
 		// Trips
+		protected.GET("/trips", tripHandler.ListTrips)
 		protected.GET("/trips/:id", tripHandler.GetTripMetadata)
 		protected.GET("/trips/:id/route", tripHandler.GetTripRoute)
 

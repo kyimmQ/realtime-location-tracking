@@ -4,24 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
+	"delivery-tracking/internal/cassandra"
 	"github.com/segmentio/kafka-go"
 )
 
 type LocationConsumer struct {
-	reader *kafka.Reader
-	hub    *Hub
+	reader    *kafka.Reader
+	hub       *Hub
+	cassandra *cassandra.Client
 }
 
-func NewConsumer(brokers, topic string, hub *Hub) (*LocationConsumer, error) {
+func NewConsumer(brokers, topic string, hub *Hub, cassandraClient *cassandra.Client) (*LocationConsumer, error) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: []string{brokers},
 		Topic:   topic,
 		GroupID: "serving-service-location-group",
 	})
 	return &LocationConsumer{
-		reader: reader,
-		hub:    hub,
+		reader:    reader,
+		hub:       hub,
+		cassandra: cassandraClient,
 	}, nil
 }
 
@@ -50,6 +54,10 @@ func (c *LocationConsumer) Consume(ctx context.Context) {
 		}
 
 		orderID, _ := update["order_id"].(string)
+		tripID, _ := update["trip_id"].(string)
+		if tripID == "" {
+			tripID = orderID
+		}
 
 		// Extract latitude and longitude from nested location object
 		var lat, lng float64
@@ -58,11 +66,31 @@ func (c *LocationConsumer) Consume(ctx context.Context) {
 			lng, _ = loc["longitude"].(float64)
 		}
 
+		speed, _ := update["speed"].(float64)
+		heading, _ := update["heading"].(float64)
+		accuracy := 0.0
+		if v, ok := update["accuracy"].(float64); ok {
+			accuracy = v
+		}
+
+		timestamp := time.Now()
+		if ts, ok := update["timestamp"].(string); ok && ts != "" {
+			if parsed, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+				timestamp = parsed
+			}
+		}
+
+		if c.cassandra != nil && tripID != "" && orderID != "" {
+			if err := c.cassandra.SaveTripLocation(tripID, driverID, orderID, timestamp, lat, lng, speed, heading, accuracy); err != nil {
+				log.Printf("Failed to persist trip location trip=%s order=%s: %v", tripID, orderID, err)
+			}
+		}
+
 		// Get enriched data from processed-updates
 		payload := map[string]interface{}{
 			"driver_id":               driverID,
 			"order_id":                orderID,
-			"trip_id":                 update["trip_id"],
+			"trip_id":                 tripID,
 			"latitude":                lat,
 			"longitude":               lng,
 			"speed":                   update["speed"],

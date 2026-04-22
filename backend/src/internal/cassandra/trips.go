@@ -5,6 +5,8 @@ import (
 	"log"
 	"math"
 	"time"
+
+	"github.com/gocql/gocql"
 )
 
 // Haversine formula to calculate the distance between two points in kilometers
@@ -59,6 +61,103 @@ type TripMetadata struct {
 	SpeedingViolations int       `json:"speeding_violations"`
 	TripCost           float64   `json:"trip_cost"`
 	Status             string    `json:"status"`
+}
+
+type TripSummary struct {
+	TripID string `json:"trip_id"`
+	Status string `json:"status"`
+}
+
+func (c *Client) ListTrips(limit int) ([]TripSummary, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	session := c.GetSession()
+	query := `SELECT trip_id, status FROM trip_metadata LIMIT ?`
+	rows := session.Query(query, limit).Iter()
+
+	var trips []TripSummary
+	var tripUUID gocql.UUID
+	var status string
+	for rows.Scan(&tripUUID, &status) {
+		trips = append(trips, TripSummary{
+			TripID: tripUUID.String(),
+			Status: status,
+		})
+	}
+
+	if err := rows.Close(); err != nil {
+		log.Printf("Error listing trips: %v", err)
+		return nil, err
+	}
+	return trips, nil
+}
+
+func (c *Client) EnsureTripMetadata(tripID, driverID, orderID, startLocation, destination string, startTime time.Time) error {
+	session := c.GetSession()
+
+	tripUUID, err := gocql.ParseUUID(tripID)
+	if err != nil {
+		return err
+	}
+	orderUUID, err := gocql.ParseUUID(orderID)
+	if err != nil {
+		return err
+	}
+
+	query := `INSERT INTO trip_metadata (
+		trip_id, driver_id, order_id, start_time, start_location, destination, status
+	) VALUES (?, ?, ?, ?, ?, ?, ?) IF NOT EXISTS`
+	return session.Query(query,
+		tripUUID,
+		driverID,
+		orderUUID,
+		startTime,
+		startLocation,
+		destination,
+		"ACTIVE",
+	).Exec()
+}
+
+func (c *Client) SaveTripLocation(tripID, driverID, orderID string, timestamp time.Time, latitude, longitude, speed, heading, accuracy float64) error {
+	session := c.GetSession()
+
+	tripUUID, err := gocql.ParseUUID(tripID)
+	if err != nil {
+		return err
+	}
+	orderUUID, err := gocql.ParseUUID(orderID)
+	if err != nil {
+		return err
+	}
+
+	query := `INSERT INTO trip_locations (
+		trip_id, timestamp, driver_id, order_id, latitude, longitude, speed, heading, accuracy
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	return session.Query(query,
+		tripUUID,
+		timestamp,
+		driverID,
+		orderUUID,
+		latitude,
+		longitude,
+		speed,
+		heading,
+		accuracy,
+	).Exec()
+}
+
+func (c *Client) MarkTripCompleted(tripID string, endTime time.Time) error {
+	session := c.GetSession()
+
+	tripUUID, err := gocql.ParseUUID(tripID)
+	if err != nil {
+		return err
+	}
+
+	query := `UPDATE trip_metadata SET end_time = ?, status = 'COMPLETED' WHERE trip_id = ?`
+	return session.Query(query, endTime, tripUUID).Exec()
 }
 
 // Get full GPS trace for a trip, ordered ascending for playback

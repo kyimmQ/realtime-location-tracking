@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useAuth } from '../../shared/hooks/useAuth'
 import { MapContainer, TileLayer, Polyline, Marker } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -16,6 +17,7 @@ const _leafletIcon = L.icon({ iconUrl: markerIcon, iconRetinaUrl: markerIcon2x, 
 L.Marker.prototype.options.icon = _leafletIcon
 
 export function TripPlayback() {
+  const { accessToken } = useAuth()
   const [selectedTrip, setSelectedTrip]   = useState('')
   const [playbackIndex, setPlaybackIndex] = useState(0)
   const [isPlaying, setIsPlaying]         = useState(false)
@@ -24,15 +26,22 @@ export function TripPlayback() {
 
   // Trip list
   const { data: trips = [] } = useQuery<{ trip_id: string; status: string }[]>({
-    queryKey: ['trips'],
-    queryFn: () => fetch(`${API_BASE}/api/trips`).then(r => r.json()).catch(() => []),
+    queryKey: ['trips', accessToken],
+    queryFn: () =>
+      fetch(`${API_BASE}/api/trips`, {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      }).then(r => r.json()).catch(() => []),
+    enabled: !!accessToken,
   })
 
   // Full route
   const { data: routePoints = [] } = useQuery<{ latitude: number; longitude: number }[]>({
-    queryKey: ['trips', selectedTrip, 'route'],
-    queryFn: () => fetch(`${API_BASE}/api/trips/${selectedTrip}/route`).then(r => r.json()).catch(() => []),
-    enabled: !!selectedTrip,
+    queryKey: ['trips', selectedTrip, 'route', accessToken],
+    queryFn: () =>
+      fetch(`${API_BASE}/api/trips/${selectedTrip}/route`, {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      }).then(r => r.json()).catch(() => []),
+    enabled: !!selectedTrip && !!accessToken,
   })
 
   // Playback animation

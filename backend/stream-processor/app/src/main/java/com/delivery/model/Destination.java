@@ -1,6 +1,7 @@
 package com.delivery.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
 
 public class Destination {
     @JsonProperty("order_id")
@@ -15,6 +16,9 @@ public class Destination {
     @JsonProperty("longitude")
     private double longitude;
 
+    @JsonProperty("route_points")
+    private List<List<Double>> routePoints;
+
     public Destination() {}
 
     public Destination(String orderId, String driverId, double latitude, double longitude) {
@@ -22,6 +26,11 @@ public class Destination {
         this.driverId = driverId;
         this.latitude = latitude;
         this.longitude = longitude;
+    }
+
+    public Destination(String orderId, String driverId, double latitude, double longitude, List<List<Double>> routePoints) {
+        this(orderId, driverId, latitude, longitude);
+        this.routePoints = routePoints;
     }
 
     public String getOrderId() { return orderId; }
@@ -35,4 +44,7 @@ public class Destination {
 
     public double getLongitude() { return longitude; }
     public void setLongitude(double longitude) { this.longitude = longitude; }
+
+    public List<List<Double>> getRoutePoints() { return routePoints; }
+    public void setRoutePoints(List<List<Double>> routePoints) { this.routePoints = routePoints; }
 }

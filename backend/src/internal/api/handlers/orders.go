@@ -52,6 +52,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	}
 
 	routeJSON, _ := json.Marshal(routePoints)
+	estimatedDistanceKm := gpx.RouteDistanceKm(routePoints)
 
 	// Create order as PENDING - no driver assigned yet, any driver can accept it
 	rows, err := pg.Query(c.Request.Context(),
@@ -67,12 +68,13 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	orderID := rows[0][0].(string)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":                  orderID,
-		"status":              "PENDING",
-		"driver_id":           nil,
-		"gpx_file":            gpxFile,
-		"restaurant_location": formatPoint(restaurant),
-		"delivery_location":   formatPoint(delivery),
+		"id":                    orderID,
+		"status":                "PENDING",
+		"driver_id":             nil,
+		"gpx_file":              gpxFile,
+		"restaurant_location":   formatPoint(restaurant),
+		"delivery_location":     formatPoint(delivery),
+		"estimated_distance_km": estimatedDistanceKm,
 	})
 }
 

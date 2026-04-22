@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -115,5 +116,64 @@ class MainTest {
         Alert alert = alertsTopic.readValue();
         assertNotNull(alert);
         assertEquals("PROXIMITY", alert.getAlertType());
+    }
+
+    @Test
+    void testDrivingDistanceUsesRoutePointsWhenAvailable() {
+        destinationTopic.pipeInput("O003", new Destination(
+                "O003",
+                "D003",
+                1.0,
+                1.0,
+                List.of(
+                        List.of(0.0, 0.0),
+                        List.of(0.0, 1.0),
+                        List.of(1.0, 1.0)
+                )
+        ));
+
+        Instant t1 = Instant.parse("2024-01-30T10:15:30Z");
+        inputTopic.pipeInput("D003", new LocationEvent(
+                "D003", "T003", "O003", Date.from(t1), 0.0, 0.0, 0, 0, 0, 10
+        ));
+
+        EnrichedLocation update = outputTopic.readValue();
+        assertNotNull(update);
+        assertTrue(update.getDistanceToDestination() > 200.0, "Expected route-based distance to exceed 200km");
+        assertTrue(update.getDistanceToDestination() < 250.0, "Expected route-based distance to be under 250km");
+    }
+
+    @Test
+    void testRemainingDistanceIsComputedAsTotalMinusTraveled() {
+        destinationTopic.pipeInput("O004", new Destination(
+                "O004",
+                "D004",
+                0.0,
+                1.0,
+                List.of(
+                        List.of(0.0, 0.0),
+                        List.of(0.0, 0.5),
+                        List.of(0.0, 1.0)
+                )
+        ));
+
+        Instant t1 = Instant.parse("2024-01-30T10:15:30Z");
+        Instant t2 = Instant.parse("2024-01-30T10:15:31Z");
+
+        inputTopic.pipeInput("D004", new LocationEvent(
+                "D004", "T004", "O004", Date.from(t1), 0.0, 0.0, 0, 0, 0, 10
+        ));
+        inputTopic.pipeInput("D004", new LocationEvent(
+                "D004", "T004", "O004", Date.from(t2), 0.0, 0.5, 0, 0, 0, 10
+        ));
+
+        EnrichedLocation first = outputTopic.readValue();
+        EnrichedLocation second = outputTopic.readValue();
+        assertNotNull(first);
+        assertNotNull(second);
+
+        assertTrue(first.getTotalRouteDistance() > 100.0, "Expected total route distance to be populated");
+        assertTrue(second.getDistanceTraveled() > first.getDistanceTraveled(), "Expected traveled distance to increase");
+        assertTrue(second.getDistanceToDestination() < first.getDistanceToDestination(), "Expected remaining distance to decrease");
     }
 }

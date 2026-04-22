@@ -60,14 +60,16 @@ func (c *LocationConsumer) Consume(ctx context.Context) {
 
 		// Get enriched data from processed-updates
 		payload := map[string]interface{}{
-			"driver_id":    driverID,
-			"order_id":     orderID,
-			"trip_id":      update["trip_id"],
-			"latitude":      lat,
-			"longitude":     lng,
-			"speed":         update["speed"],
-			"eta_seconds":   update["eta_seconds"],
-			"distance_km":   update["distance_to_destination"],
+			"driver_id":               driverID,
+			"order_id":                orderID,
+			"trip_id":                 update["trip_id"],
+			"latitude":                lat,
+			"longitude":               lng,
+			"speed":                   update["speed"],
+			"eta_seconds":             update["eta_seconds"],
+			"distance_km":             update["distance_to_destination"],
+			"distance_traveled_km":    update["distance_traveled"],
+			"total_route_distance_km": update["total_route_distance"],
 		}
 
 		wrapped := map[string]interface{}{

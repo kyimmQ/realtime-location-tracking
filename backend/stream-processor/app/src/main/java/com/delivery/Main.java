@@ -1,9 +1,9 @@
 package com.delivery;
 
 import com.delivery.model.*;
+import com.delivery.processor.RouteProgressProcessor;
 import com.delivery.processor.SpeedAlertProcessor;
 import com.delivery.serde.JsonSerde;
-import com.delivery.util.Haversine;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
@@ -75,12 +75,19 @@ public class Main {
         JsonSerde<Alert> alertSerde = new JsonSerde<>(Alert.class);
         JsonSerde<Destination> destinationSerde = new JsonSerde<>(Destination.class);
         JsonSerde<SpeedAccumulator> speedAccumulatorSerde = new JsonSerde<>(SpeedAccumulator.class);
+        JsonSerde<RouteProgressState> routeProgressStateSerde = new JsonSerde<>(RouteProgressState.class);
 
         // 1. Add state store for SpeedAlertProcessor
         builder.addStateStore(Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(SpeedAlertProcessor.STATE_STORE),
                 Serdes.String(),
                 locationEventSerde
+        ));
+
+        builder.addStateStore(Stores.keyValueStoreBuilder(
+                Stores.persistentKeyValueStore(RouteProgressProcessor.STATE_STORE),
+                Serdes.String(),
+                routeProgressStateSerde
         ));
 
         // Consume raw events - use driver_id from the message value as key
@@ -149,27 +156,15 @@ public class Main {
                 Materialized.as("destination-store")
         );
 
-        // Join with destination table to get distance and ETA
-        KStream<String, EnrichedLocation> fullyEnrichedStream = rekeyedStream.leftJoin(
+        KStream<String, EnrichedWithDestination> routeInputStream = rekeyedStream.leftJoin(
                 destinationTable,
-                (location, dest) -> {
-                    if (dest != null) {
-                        double distKm = Haversine.haversine(
-                                location.getLatitude(), location.getLongitude(),
-                                dest.getLatitude(), dest.getLongitude()
-                        );
-
-                        // Calculate ETA if speed > 0
-                        int etaSec = 0;
-                        if (location.getSpeed() > 0) {
-                             etaSec = (int) ((distKm / location.getSpeed()) * 3600);
-                        }
-                        return location.withDistanceAndEta(distKm, etaSec);
-                    }
-                    // If destination not available, return location as-is
-                    return location;
-                },
+                EnrichedWithDestination::new,
                 Joined.with(Serdes.String(), enrichedLocationSerde, destinationSerde)
+        );
+
+        KStream<String, EnrichedLocation> fullyEnrichedStream = routeInputStream.process(
+                new RouteProgressProcessor(),
+                RouteProgressProcessor.STATE_STORE
         );
 
         // Emit alerts as side outputs, while always forwarding the location update stream.

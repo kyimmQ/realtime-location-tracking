@@ -54,6 +54,12 @@ public class EnrichedLocation {
     @JsonProperty("distance_to_destination")
     private double distanceToDestination;
 
+    @JsonProperty("distance_traveled")
+    private double distanceTraveled;
+
+    @JsonProperty("total_route_distance")
+    private double totalRouteDistance;
+
     @JsonProperty("is_speeding")
     private boolean speeding;
 
@@ -73,6 +79,14 @@ public class EnrichedLocation {
     // Builder-like pattern for transformations
     public EnrichedLocation withDistanceAndEta(double distanceKm, int etaSec) {
         this.distanceToDestination = distanceKm;
+        this.etaSeconds = etaSec;
+        return this;
+    }
+
+    public EnrichedLocation withRouteProgress(double totalRouteDistance, double distanceTraveled, double distanceToDestination, int etaSec) {
+        this.totalRouteDistance = totalRouteDistance;
+        this.distanceTraveled = distanceTraveled;
+        this.distanceToDestination = distanceToDestination;
         this.etaSeconds = etaSec;
         return this;
     }
@@ -104,6 +118,12 @@ public class EnrichedLocation {
 
     public double getDistanceToDestination() { return distanceToDestination; }
     public void setDistanceToDestination(double distanceToDestination) { this.distanceToDestination = distanceToDestination; }
+
+    public double getDistanceTraveled() { return distanceTraveled; }
+    public void setDistanceTraveled(double distanceTraveled) { this.distanceTraveled = distanceTraveled; }
+
+    public double getTotalRouteDistance() { return totalRouteDistance; }
+    public void setTotalRouteDistance(double totalRouteDistance) { this.totalRouteDistance = totalRouteDistance; }
 
     public boolean isSpeeding() { return speeding; }
     public void setSpeeding(boolean speeding) { this.speeding = speeding; }
